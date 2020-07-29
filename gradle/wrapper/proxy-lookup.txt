@@ -1,0 +1,2 @@
+# This setting is no longer needed in CMRE
+#local.tmvse.com edibloxx.tmvse.com 8080

@@ -1,0 +1,25 @@
+dataset: "AAPM"
+data_root_aapm: /home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/Training
+#data_root_aapm: /ADP_ContinualLearning/data/MultiOrgan/preprocessed # DGX
+verbose: False
+supress_logging: True
+load_size: 256
+resize: True
+nfc: 32
+start_task: 0
+weight_decay: 0
+#output_predictions: True
+
+## Frequently changed
+num_epochs: 30
+batch_size: 1 #16
+lr: 0.001
+#debug_mode: True  # turn this off after u r done debuggin, it affects the size of the dataset
+replay_mode:  LwF # ideal #
+
+name: "orderA_run0/" #"orderA_1dot2_bce_local" #   #"orderC_run2"  # "just_testing"
+message: "eval per scan" #"kd factor 0.01, bce factor 1 training orderA, run1"   #"kd factor 0.01, bce factor 1"
+#run_training: True
+run_evaluation: True
+
+#fine_tune: True

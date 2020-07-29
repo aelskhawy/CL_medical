@@ -1,0 +1,20 @@
+dataset: "AAPM"
+data_root_aapm: C:\skhawy\Canon\Code\ADP_ContinualLearning\data\Training
+verbose: False
+debug_mode: True  # turn this off after u r done debuggin, it affects the size of the dataset
+initial_training: False
+continual_learning_training: True
+continual_learning: True
+domain_learning: False
+replay_mode: LwF
+load_size: 256
+resize: True
+num_epochs: 100 
+batch_size: 2
+lr: 0.0001
+nfc: 32
+start_task: 1
+run_training: True
+#run_evaluation: True
+#output_predictions: True
+

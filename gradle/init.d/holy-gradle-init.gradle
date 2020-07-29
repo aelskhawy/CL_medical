@@ -1,0 +1,336 @@
+// NOTE: IntelliJ claims that these are unused imports but, for some reason, Gradle (1.4) needs them when this init
+// script is actually run.
+/**
+ * This Java system property can optionally be supplied with a (file) URL value which will be added as the first repo
+ * used by the build script to find plugins, so that integration tests can force locally-published versions of the
+ * plugins to be tested.
+ * 
+ * This property key must match the one in holygradle.test.AbstractHolyGradleIntegrationTest, in
+ * custom-gradle-core-plugin.
+ */
+final String PLUGINS_REPO_OVERRIDE_SYSTEM_PROPERTY_KEY = "holygradle.pluginsRepoOverride"
+final String PLUGINS_REPO_OVERRIDE = System.getProperty(PLUGINS_REPO_OVERRIDE_SYSTEM_PROPERTY_KEY)
+
+class HolyGradlePlugins {
+    // NOTE 2013-06-07 HughG: Referenced by holygradle.custom_gradle.VersionInfo.
+    public Map<String,String> usages = [:]
+
+    private ScriptHandler buildscript
+    private Project project
+    
+    HolyGradlePlugins(ScriptHandler buildscript, Project project) {
+        this.buildscript = buildscript
+        this.project = project
+        // Point the buildscript to the Holy Gradle plugins.
+        if (project.property("holyGradlePluginsRepository") != null) {
+            buildscript.repositories { RepositoryHandler repoHandler ->
+                repoHandler.ivy { IvyArtifactRepository repo ->
+                    repo.url = project.property("holyGradlePluginsRepository")
+                }
+            }
+        }
+        // Point the buildscript to a source of dependencies for the Holy Gradle plugins.
+        if (!project.property("holyGradleRemoteRepository") != null) {
+            buildscript.repositories { RepositoryHandler repoHandler ->
+                repoHandler.mavenCentral()
+            }
+        } else {
+            buildscript.repositories { RepositoryHandler repoHandler ->
+                repoHandler.maven { MavenArtifactRepository repo ->
+                    repo.url = project.property("holyGradleRemoteRepository")
+                }
+            }
+        }
+
+        // By default, set the resolution strategy for buildscript dependencies so that those
+        // specified with dynamic version numbers (e.g. "1.0.+") are cached for 1 hour.
+        buildscript.configurations.all ((Closure){ Configuration conf ->
+            conf.resolutionStrategy { ResolutionStrategy res ->
+                res.cacheChangingModulesFor 1, 'seconds'
+                res.cacheDynamicVersionsFor 1, 'hours'
+            }
+        })
+
+        warnIfRequestedVersionsNotSelected(buildscript, project)
+    }
+
+    // Warn if the requested version of any module is not the version which ends up getting used.  This is typically
+    // because a plugin version is changed in a sub-project of the root project, and the root depends on the
+    // sub-project, but the root uses a different version.  In that case the version from the root may be selected.
+    // This is probably not what the user wanted and may lead to unpleasant surprises.
+    //
+    // (There used to be code in useInternal which tried to force SNAPSHOT-0 versions to be selected in all
+    // projects, if they were selected in any.  However, that doesn't work because the root project's buildscript
+    // configuration will already have been resolved before the sub-project buildscripts get a chance to change
+    // their resolution strategy.)
+    private static warnIfRequestedVersionsNotSelected(ScriptHandler buildscript, Project project) {
+        buildscript.configurations.all((Closure) { Configuration conf ->
+            conf.incoming.afterResolve((Closure) { ResolvableDependencies deps ->
+                // The resolutionResult.root gives us just those modules which were explicitly specified in the
+                // configuration, excluding their dependencies.
+                deps.resolutionResult.root.dependencies.each { /* ? extends DependencyResult */ result ->
+                    if (result instanceof ResolvedDependencyResult) {
+                        def requested = result.requested
+                        def selected = result.selected
+                        if (requested.displayName != selected.id.displayName) {
+                            project.logger.warn(
+                                "WARNING: Buildscript for ${project} requested ${requested.displayName} but selected " +
+                                "${selected.id.displayName}.  If this is not expected please check plugin versions " +
+                                "are consistent in all projects, including checking any resolutionStrategy.  " +
+                                "The reason for this selection is: ${selected.selectionReason.description}."
+                            )
+                        }
+                    }
+                }
+            })
+        })
+    }
+
+    // This is an API for use by build scripts, so ignore the "unused" warning.
+    @SuppressWarnings("GroovyUnusedDeclaration")
+    public void use(String plugin_version) {
+        String group = "holygradle"
+        String plugin
+        String version
+        final String error = "Invalid format for 'gplugins.use'. The parameter should be in the form '<module>:<version>'."
+        if (plugin_version.contains(":")) {
+            String[] split = plugin_version.split(":")
+            if (split.size() == 2) {
+                plugin = split[0]
+                version = split[1]
+            } else if (split.size() == 3) {
+                group = split[0]
+                plugin = split[1]
+                version = split[2]
+            } else {
+                throw new RuntimeException(error)
+            }
+        } else {
+            throw new RuntimeException(error)
+        }
+        useInternal(group, plugin, version)
+    }
+
+    // This is an API for use by build scripts, so ignore the "unused" warning.
+    @SuppressWarnings("GroovyUnusedDeclaration")
+    public void use(String plugin, String version) {
+        useInternal "holygradle", plugin, version
+    }
+    
+    private void useInternal(String group, String plugin, String version) {
+        // This allows plugins to be specified as "foo" or "foo-plugin".
+        String pluginFullName = null
+        if (plugin.endsWith("-plugin")) {
+            pluginFullName = plugin
+            plugin = plugin - "-plugin"
+        } else {
+            pluginFullName = "${plugin}-plugin"
+        }
+        
+        boolean usingSnapshots = false
+        // Tell the user if individual plugins are set to SNAPSHOT versions.
+        if (version.endsWith("SNAPSHOT-0")) {
+            println "Detected a changing module (e.g., under development) due to SNAPSHOT-0 in version: $plugin $version"
+            usingSnapshots = true
+        }
+        // Set all plugins as SNAPSHOT versions if the global property is set.
+        String pluginsSnapshotsUser = System.getProperty("holygradle.pluginsSnapshotsUser")
+        if (pluginsSnapshotsUser != null) {
+            version = "${pluginsSnapshotsUser}SNAPSHOT-0"
+            usingSnapshots = true
+        }
+
+        // Actually add the plugins to the buildscript, and record the version.
+        final String OPTIONAL_CONFIGURATION_NAME = '__holygradle_optional'
+        if (!buildscript.configurations.findByName(OPTIONAL_CONFIGURATION_NAME)) {
+            buildscript.configurations.create(OPTIONAL_CONFIGURATION_NAME)
+        }
+        buildscript.dependencies { DependencyHandler depHandler ->
+            depHandler.add("classpath", "${group}:${pluginFullName}:${version}") { ExternalModuleDependency dep ->
+                dep.changing = usingSnapshots
+            }
+            depHandler.add(
+                OPTIONAL_CONFIGURATION_NAME,
+                [group: group, name: pluginFullName, version: version, configuration: 'optional']
+            ) { ExternalModuleDependency dep ->
+                dep.changing = usingSnapshots
+            }
+        }
+        usages[plugin] = version
+
+        // Hack: Also force the core plugin to use the snapshot version and to be a changing module.  Otherwise picking
+        // up a new SNAPSHOT version of the main plugins won't download the latest core plugin.
+        if (usingSnapshots && !usages.containsKey("custom-gradle-core")) {
+            use("custom-gradle-core", version)
+        }
+    }
+
+    // This is an API method to be called from build scripts, so suppress IntelliJ warning.
+    @SuppressWarnings("GroovyUnusedDeclaration")
+    public void apply() {
+        Project localProject = project // allow closures to access class-private
+
+        // Schedule 'user.gradle' files to be applied first thing after the projects are evaluated.
+        project.gradle.projectsEvaluated {
+            String userScript = 'user.gradle'
+            File userScriptFile = new File(localProject.projectDir, userScript)
+            if (userScriptFile.exists()) {
+                localProject.apply from: userScriptFile.name
+            } else if (localProject.buildFile != null) {
+                String userBuildScript = localProject.buildFile.name.replace(".gradle", ".${userScript}")
+                userScriptFile = new File(localProject.projectDir, userBuildScript)
+                if (userScriptFile.exists()) {
+                    localProject.apply from: userScriptFile.name
+                }
+            }
+        }
+
+        usages.each { name, version ->
+            localProject.apply plugin: name
+        }
+    }  
+}
+
+final String holyGradleInitScriptVersion = "10.0.3"
+final String holyGradleInitScriptSourceVersion = " bce36ae8b624 default tip 2019-04-19T13:18:08+01:00"
+
+gradle.projectsLoaded { Gradle gradle ->
+    Logger logger = gradle.rootProject.logger
+
+    // We need to guard this, because the init script is run twice each time, once with "buildSrc"
+    // as the root (even if there's no "buildSrc" directory) and once for the actual root project.
+    if (gradle.rootProject.name != "buildSrc") {
+        //If we're integration testing, dump out some extra info for debugging.
+        if (PLUGINS_REPO_OVERRIDE != null) {
+            gradle.rootProject.buildscript.repositories.each { ArtifactRepository repo ->
+                String location = (repo.hasProperty("url") ? repo.url : "unknown location")
+                logger.debug "Buildscript using repo ${repo.name} (${location})"
+            }
+        }
+        return
+    }
+
+    logger.lifecycle("Gradle user home: ${gradle.gradleUserHomeDir}")
+    logger.lifecycle("Holy Gradle init script version: ${holyGradleInitScriptVersion}")
+    logger.lifecycle("Holy Gradle init script source version: ${holyGradleInitScriptSourceVersion}")
+    if (holyGradleInitScriptVersion.endsWith("SNAPSHOT-0")) {
+        logger.warn(
+            "Using SNAPSHOT version. " +
+            "Gradle wrapper will NOT automatically download the latest. " +
+            "You must manually delete entries in \"" + 
+            (new File(gradle.getGradleUserHomeDir(), "wrapper")).toString() + "\"."
+        )
+    }
+}
+
+final String PLUGINS_REPO_NAME = "plugins-release"
+final String REMOTE_REPO_NAME = "remote-repos"
+
+// Gradle automagically converts the closure to an Action<Project> here, so suppress IntelliJ warning.
+//noinspection GroovyAssignabilityCheck
+gradle.allprojects { Project project ->
+    project.ext["holyGradleInitScriptVersion"] = holyGradleInitScriptVersion
+    project.ext["holyGradleInitScriptSourceVersion"] = holyGradleInitScriptSourceVersion
+
+    // Check to see if we should add an extra local repo from which to download the Holy Gradle plugins, for integration
+    // testing
+    if (PLUGINS_REPO_OVERRIDE != null) {
+        println "Using pluginsRepoOverride=${PLUGINS_REPO_OVERRIDE}"
+
+        project.buildscript.repositories.ivy { IvyArtifactRepository it ->
+            it.url = PLUGINS_REPO_OVERRIDE
+        }
+    }
+
+    // Check if we should override use of repositories based on presence of 'local_artifacts' folder.
+    // This is to support building projects without access to an Artifactory or similar repository.
+    boolean usingLocalArtifacts = false
+    File localArtifactsFile = null
+    if (project == project.rootProject) {
+        for (File possibleParent = project.projectDir;
+            possibleParent != null;
+            possibleParent = possibleParent.parentFile
+        ) {
+            localArtifactsFile = new File(possibleParent, "local_artifacts")
+            if (localArtifactsFile.exists()) {
+                usingLocalArtifacts = true
+                break
+            }
+        }
+        if (usingLocalArtifacts) {
+            println "="*75
+            println "Detected '${localArtifactsFile.name}' directory at '${localArtifactsFile}'"
+            println "Overriding usage of non-local repositories..."
+            println "="*75
+        }
+    } else {
+        usingLocalArtifacts = project.rootProject.property("usingLocalArtifacts")
+        localArtifactsFile = project.rootProject.property("localArtifactsFile") as File
+    }
+    project.ext["usingLocalArtifacts"] = usingLocalArtifacts
+    project.ext["localArtifactsFile"] = localArtifactsFile
+
+    if (usingLocalArtifacts) {
+        // Make the "local_artifacts" folder be the first (ivy-format) repository the project will see,
+        // so it will end up fetching all holygradle-packaged dependencies from there.
+        project.repositories.ivy { IvyArtifactRepository it ->
+            it.url = new File(localArtifactsFile, "ivy").path
+        }
+    }
+
+    // Configure holyGradlePluginsRepository (ivy format) and holyGradleRemoteRepository (maven format)
+    String repoBase;
+    String pluginsRepo;
+    String remoteRepo;
+    if (PLUGINS_REPO_OVERRIDE != null) {
+        repoBase = PLUGINS_REPO_OVERRIDE
+        pluginsRepo = PLUGINS_REPO_OVERRIDE
+        remoteRepo = null
+    } else if (usingLocalArtifacts) {
+        // There is no sensible "base repo URL" in this case, and normal use of it will be overridden by the
+        // "if (usingLocalArtifacts)" block above anyway, so just make it a dummy value.
+        repoBase = "__using_local_artifacts"
+        pluginsRepo = new File(localArtifactsFile, "ivy").toURI().toString()
+        remoteRepo = new File(localArtifactsFile, "maven").toURI().toString()
+    } else {
+        // Get the base URL for fetching the plugins and their dependencies.  This allows the same source code to be
+        // used from multiple sites which may not share a single server.  We use an environment variable instead of a
+        // property because we also need to access this value from within "gw.bat", to set the distributionUrl for
+        // bootstrapping the custom Gradle wrapper which contains this very init-script (and there's no easy way to
+        // get at Java properties from a batch file).
+
+        final String HOLY_GRADLE_REPOSITORY_BASE_URL_ENV_VAR_NAME = "HOLY_GRADLE_REPOSITORY_BASE_URL"
+        repoBase = System.getenv(HOLY_GRADLE_REPOSITORY_BASE_URL_ENV_VAR_NAME)
+        if (repoBase == null) {
+            throw new RuntimeException(
+                "You must set the base URL for the repository which contains the Holy Gradle plugins " +
+                "and their dependencies.  To do this, set the environment variable " +
+                HOLY_GRADLE_REPOSITORY_BASE_URL_ENV_VAR_NAME +
+                " to the base URL for your Artifactory or other repository.  For example, " +
+                "'https://artifactory-server.my-corp.com/artifactory/'"
+            )
+        }
+        if (!repoBase.endsWith("/")) {
+            repoBase += "/"
+        }
+        pluginsRepo = repoBase + PLUGINS_REPO_NAME
+        remoteRepo = repoBase + REMOTE_REPO_NAME
+    }
+    project.ext["holyGradleRepositoryBase"] = repoBase
+    project.ext["holyGradlePluginsRepository"] = pluginsRepo
+    project.ext["holyGradleRemoteRepository"] = remoteRepo
+
+    project.extensions.create('gplugins', HolyGradlePlugins, project.buildscript, project)
+}
+
+// Build scripts need to do the following:
+/*
+buildscript {
+    gplugins.use "intrepid:3.0.6.+"
+    gplugins.use "devenv:2.0.0.+"
+}
+gplugins.apply()
+*/
+
+// Unfortunately the plugin needs to be applied outside of the buildscript block. However, once
+// this issue (http://issues.gradle.org/browse/GRADLE-2407) is fixed, we can tidy this up.

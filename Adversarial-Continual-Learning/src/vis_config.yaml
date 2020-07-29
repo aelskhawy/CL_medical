@@ -1,0 +1,78 @@
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+
+################ Frequently changed options ######################
+name: "awesome_setup_5tasks_esoph_0.45"
+message: ""
+nepochs: 10
+#debug_mode: True
+#evaluate_only: True
+continue_train: True  # to continue training an existing model
+
+adv: 0.05     #adversarial loss regularizer
+d_wd: 0.05
+orth: 0.3 #0.1     #diff loss regularizer
+
+diff: "yes"
+batch_size: 12
+
+e_lr: 0.001 # TODO: this is high just for testing
+
+################## Regularization options ##########################
+lam: 1        #diff loss lambda
+
+#################################################################
+num_runs: 1 #5
+experiment: "AAPM"
+data_root_aapm: /home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/Training
+#data_dir: "../data"
+checkpoint: "./checkpoints/"
+output: ""
+tsne: "no"
+
+
+######################### Tasks related options ####################
+ntasks: 5
+use_memory: "no"
+samples: 0
+
+#################### Shared + private  #########################
+e_wd: 0 #0.01
+s_step: 5 #30
+
+################### Discriminator  ##############################
+d_lr: 0.0001
+d_step: 1
+
+################# lr related options ############################
+lr_factor: 3
+lr_min: 1.0e-06
+lr_patience: 10
+mom: 0.9
+
+###############
+nlayers: 2
+units: 175
+head_units: 28
+latent_dim: 256
+
+#################### Batch size and epochs ###########################
+pc_valid: 0.15
+
+workers: 0
+device: "cuda:0"
+replay_mode: ""
+
+# Transformer options
+load_size: 256
+resize: True
+#gauss_noise: None
+#aug_scale: None
+#aug_angle: None
+#flip_prob: None
+#crop: None
+
+

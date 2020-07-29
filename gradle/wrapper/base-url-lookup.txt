@@ -1,0 +1,4 @@
+local.tmvse.com https://artifactcentral.local.tmvse.com/artifactory/
+vitalimages.com https://artifactory.vitalimages.com/artifactory/
+nasu.local https://133.117.20.128/artifactory/
+toshiba.local https://133.117.20.128/artifactory/

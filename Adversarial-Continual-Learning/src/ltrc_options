@@ -1,0 +1,91 @@
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+
+################ Frequently changed options ######################
+#name: "half_sized_model_same_score"
+name:  "LTRC_sp_rl_ll_tr_eso" #"aapm_eso_h_ll_rl_sp" #"aapm_sp_rl_ll_heart_eso"
+message: ""
+nepochs: 40
+dataset: LTRC # AAPM or LTRC
+continue_train: True  # to continue training an existing model
+
+#debug_mode: True
+which_network: aspp # old | normal | aspp
+
+#tsne: "yes"
+#### evaluation options
+#evaluate_only: True
+#eval_split: test # #test
+#per_vol_eval: True
+#vis_flag: True
+#start_eval_model: "spinal_cord"  #oesophagus #
+
+adv: 0.03 #0.03 #0.05 #0.05     #adversarial loss regularizer  0.05aapm 0.03 ltrc
+d_wd: 0.01
+orth: 0.6 #0.3 #0.1     #diff loss regularizer  0.3 aapm 0.6 ltrc
+
+diff: "yes"
+batch_size: 16
+
+e_wd: 0 #1e-3  #0.001 #0.01  TODO: 0 for AAPM works fine, 1e-3 for LTRC
+e_lr: 0.01  #0.01 #3.3e-4 #0.001 # 0.001  TODO: 0.001 for AAPM, 0.0001 for LTRC
+lr_patience: 7 # TODO: this was 10
+
+latent_dim: 256
+
+# Data augmentation
+#aug_scale: 0.05
+#aug_angle: 15
+################## Regularization options ##########################
+lam: 1   #diff loss lambda
+
+#################################################################
+num_runs: 3 #5
+experiment: "AAPM"
+data_root_aapm: /ADP_ContinualLearning/data/MultiOrgan/preprocessed # DGX  #/home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/
+#data_dir: "../data"
+checkpoint: "./checkpoints/"
+output: ""
+
+
+######################### Tasks related options ####################
+ntasks: 5
+use_memory: "no"
+samples: 0
+
+#################### Shared + private  #########################
+s_step: 5 #30
+
+################### Discriminator  ##############################
+d_lr: 0.0001
+d_step: 1
+
+################# lr related options ############################
+lr_factor: 3
+lr_min: 1.0e-06
+mom: 0.9
+
+###############
+nlayers: 2
+units: 175
+head_units: 28
+
+#################### Batch size and epochs ###########################
+pc_valid: 0.15
+
+workers: 0
+device: "cuda:0"
+replay_mode: ""
+
+# Transformer options
+load_size: 256
+resize: True
+#gauss_noise: None
+
+#flip: 0.5
+#crop: 0.5
+
+
