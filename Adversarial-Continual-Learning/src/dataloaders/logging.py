@@ -10,8 +10,10 @@ def configure_logging(args):
     root.handlers.clear()  ## to avoid multiple prints on subsequent runs
     root.setLevel(logging_level)
 
-    # log_file = os.path.join('./checkpoints/', args.name + "/logger.info")
-    log_file = os.path.join(args.checkpoint, "/logger.info")  # polyaxon
+    if "aelskhawy" in str(args.checkpoint):  # polyaxon created output path
+        log_file = os.path.join(args.checkpoint, "/logger.info")  # polyaxon
+    else:
+        log_file = os.path.join('./checkpoints/', args.name + "/logger.info")
 
     # Stdout
     handler = logging.StreamHandler(sys.stdout)
