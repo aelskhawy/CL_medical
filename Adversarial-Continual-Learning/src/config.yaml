@@ -6,36 +6,39 @@
 
 ################ Frequently changed options ######################
 #name: "half_sized_model_same_score"
-name: "using_pixel_shuffle" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #"aapm_sp_rl_ll_heart_eso"
-message: "eval "
-nepochs: 10
-dataset: AAPM # AAPM or LTRC
+name: "all_6_ltrc_options" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #"aapm_sp_rl_ll_heart_eso"
+message: ""
+nepochs: 50
+dataset: structseg # AAPM, LTRC, structseg
 #continue_train: True  # to continue training an existing model
 #debug_mode: True
-which_network: old # old | normal | aspp
+which_network: aspp # old | normal | aspp
 
 
 num_runs: 1 #5
 
+ntasks: 6
 
 ##### evaluation options
-evaluate_only: True
-eval_split: test # #test
+
+#
+#evaluate_only: True
+#eval_split: val # #test
 #vis_seg: True
 #tsne: "yes"
 #per_vol_eval: True
 #vis_flag: True
 #start_eval_model: "spinal_cord"  #oesophagus #
 
-adv: 0.05 #0.03 #0.05 #0.05     #adversarial loss regularizer  0.05aapm 0.03 ltrc
+adv: 0.03 #0.03 #0.05 #0.05     #adversarial loss regularizer  0.05aapm 0.03 ltrc
 d_wd: 0.01
-orth: 0.3 #0.3 #0.1     #diff loss regularizer  0.3 aapm 0.6 ltrc
+orth: 0.6 #0.3 #0.1     #diff loss regularizer  0.3 aapm 0.6 ltrc
 
 diff: "yes"
 batch_size: 16 # 16
 
 e_wd: 0 #1e-3  #0.001 #0.01  TODO: 0 for AAPM works fine, 1e-3 for LTRC
-e_lr: 0.001  #0.01 #3.3e-4 #0.001 # 0.001  TODO: 0.001 for AAPM, 0.0001 for LTRC
+e_lr: 0.01  #0.01 #3.3e-4 #0.001 # 0.001  TODO: 0.001 for AAPM, 0.0001 for LTRC
 lr_patience: 10 # TODO: this was 10
 
 latent_dim: 256
@@ -48,14 +51,16 @@ lam: 1   #diff loss lambda
 
 #################################################################
 experiment: "AAPM"
-data_root_aapm: /home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/ #/ADP_ContinualLearning/data/MultiOrgan/preprocessed # DGX
+#data_root_aapm: /home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/ #/ADP_ContinualLearning/data/MultiOrgan/preprocessed # DGX
+
+#data_root_aapm: /home/skhawy/thesis/CL_medical/data/ #/ADP_ContinualLearning/data/MultiOrgan/preprocessed # DGX
+
 #data_dir: "../data"
 checkpoint: "./checkpoints/"
 output: ""
 
 
 ######################### Tasks related options ####################
-ntasks: 5
 use_memory: "no"
 samples: 0
 

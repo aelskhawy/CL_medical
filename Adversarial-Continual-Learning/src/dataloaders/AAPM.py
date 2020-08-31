@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pathlib import Path
 from typing import List
 import shutil
-import pydicom
+# import pydicom
 from skimage.draw import polygon
 import numpy as np
 import pandas as pd
@@ -43,8 +43,9 @@ def project_root() -> Path:
 def input_data_root() -> Path:
     # Set the environment variable "ADP_CL_DATA_ROOT" to data location.  Defaults to "<project_repo>/data".
     # path_root = os.environ.get("ADP_CL_DATA_ROOT", project_root() / 'data')
-    return Path("/home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/")
+    # return Path("/home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/")
     # return Path("/ADP_ContinualLearning/data/")  # DGX
+    return Path("/home/skhawy/thesis/CL_medical/data")
 
 def multi_organ_data_root() -> Path:
     multio_path = input_data_root() / 'MultiOrgan'

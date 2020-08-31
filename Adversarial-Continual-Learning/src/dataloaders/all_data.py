@@ -4,7 +4,7 @@ import logging
 from typing import List, Union, Dict
 
 from torch.utils.data import Dataset
-from dataloaders import AAPM, LTRC_NLST
+from dataloaders import AAPM, LTRC_NLST, structSeg
 from dataloaders.transforms import Transformer
 
 logger = logging.getLogger(__name__)
@@ -66,8 +66,8 @@ def get_data(query: DataQuery, split: Split, debug_mode: bool = False, options=N
         datasets = AAPM.get_multi_organ_dataset(split=str(split), debug_mode=options.debug_mode,
                                                 requested_organ_list=query.tasks,
                                                 transforms=transforms, opt=options)
-    else:
-        datasets = LTRC_NLST.get_ltrc_nlst_dataset(split=str(split), debug_mode=options.debug_mode,
+    else:  # structseg
+        datasets = structSeg.get_multi_organ_dataset(split=str(split), debug_mode=options.debug_mode,
                                                 requested_organ_list=query.tasks,
                                                 transforms=transforms, opt=options)
     if debug_mode:
@@ -83,6 +83,13 @@ def aapm_data_queries(options=None) -> List[DataQuery]:
     else:
         return [DataQuery(tasks=organ) for organ in AAPM.all_organs()]
 
+
+def structseg_data_queries(options=None) -> List[DataQuery]:
+    logger.info("Training Order is {}".format(structSeg.all_organs()))
+    if options.replay_mode == "ideal":
+        return [DataQuery(tasks=structSeg.all_organs())]
+    else:
+        return [DataQuery(tasks=organ) for organ in structSeg.all_organs()]
 
 
 def ltrc_nlst_data_queries() -> List[DataQuery]:

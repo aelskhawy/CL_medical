@@ -35,7 +35,11 @@ class ACL(object):
         self.batch_size = args.batch_size
         self.tasks = tasks
 
-        self.ROI_order = ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
+        if self.args.dataset == 'AAPM':
+            self.ROI_order = ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
+        else:
+            self.ROI_order = ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
+
         # optimizer & adaptive lr
         self.e_lr=args.e_lr
         self.d_lr=args.d_lr
@@ -157,7 +161,7 @@ class ACL(object):
 
     def get_test_data(self, data_query: DataQuery, debug_mode: bool = False, options=None) \
             -> Tuple[Dataset, Dataset]:
-        test_data_volumes = get_data(query=data_query, split=Split.FinalEvaluation if self.args.dataset =='AAPM' else Split.DevelopmentTest,
+        test_data_volumes = get_data(query=data_query, split=Split.FinalEvaluation,  #if self.args.dataset =='AAPM' else Split.DevelopmentTest,
                                      debug_mode=debug_mode, options=options)
 
         if options.per_vol_eval:
@@ -186,7 +190,7 @@ class ACL(object):
 
             if not self.args.continue_train:
                 return
-            if not self.organ in  ["oesophagus"]: # "heart", "oesophagus"
+            if not self.organ in  ["l_lung"]: # "heart", "oesophagus"
                 return
 
         self.discriminator=self.get_discriminator(task_id)
@@ -221,7 +225,7 @@ class ACL(object):
 
         # get the respective task data
         task_query = self.tasks[task_id]
-        self.original_label = self.organ_label_mapping(task_query.tasks[0]) if self.args.dataset == 'AAPM' else 1
+        self.original_label = self.organ_label_mapping(task_query.tasks[0])  #if self.args.dataset == 'AAPM' else 1
 
         st=time.time()
         training_data = self.get_training_data(data_query=task_query,
@@ -367,6 +371,7 @@ class ACL(object):
 
             # print("min input {} max input {}".format(torch.min(x), torch.max(x)))
             # print("unique target {} , unique y {}".format(torch.unique(target), torch.unique(y)))
+            # print("tt is", tt)
             # print("unique target", torch.unique(target))
             # print("unique y", torch.unique(y))
             # Detaching samples in the batch which do not belong to the current task before feeding them to P
@@ -526,8 +531,8 @@ class ACL(object):
                 _, pred_d = output_d.max(1)  # Batch x n_outputs
                 correct_d += pred_d.eq(t_real_D.view_as(pred_d)).sum().item()
                 # # Loss values
-                task_loss = self.task_loss(output, y) # + 0.0 * self.dice_loss(output, y)
-                adv_loss = self.adversarial_loss_d(output_d, t_real_D)
+                task_loss = torch.tensor(0).to(device=self.device, dtype=torch.float32) #self.task_loss(output, y) # + 0.0 * self.dice_loss(output, y)
+                adv_loss = torch.tensor(0).to(device=self.device, dtype=torch.float32) #self.adversarial_loss_d(output_d, t_real_D)
 
                 if self.diff == 'yes':
                     diff_loss = self.diff_loss(shared_out, task_out)
@@ -541,8 +546,14 @@ class ACL(object):
                 # total_loss = task_loss
                 # compute dice scores and save some samples of the segmentation for sanity check
                 output = torch.sigmoid(output)
+
                 for i, t in enumerate([0.5, 0.7]):
-                    final_pred = (output >= t).type(torch.FloatTensor).to(self.device)
+                    final_pred = (output >= t)
+
+                    final_pred= final_pred.type(torch.FloatTensor)
+                    # print("passed this point")
+                    final_pred = final_pred.to(self.device)
+                    # print("tensor on gpu")
                     dice_score = self.compute_dice_score(final_pred, y)
                     if self.args.vis_seg and t == 0.5:
                         print("dice score of slice {} is {}".format(batch, dice_score))
@@ -613,9 +624,9 @@ class ACL(object):
         if not os.path.exists(model_file):
             raise ValueError("No model found for {}".format(self.organ))
 
-        # if not self.organ in ['oesophagus']: #oesophagus
-        #     logger.info("skipping evaluation for {}".format(self.organ))
-        #     return
+        if not self.organ in ['r_lung']: #oesophagus
+            logger.info("skipping evaluation for {}".format(self.organ))
+            return
 
         self.model = self.load_checkpoint(self.organ)
         self.model.eval()
@@ -658,7 +669,7 @@ class ACL(object):
             # get the respective task data
             # if task_query.tasks[0] != "oesophagus":
             #     continue
-            self.original_label = self.organ_label_mapping(task_query.tasks[0]) if self.args.dataset == 'AAPM' else 1
+            self.original_label = self.organ_label_mapping(task_query.tasks[0]) #if self.args.dataset == 'AAPM' else 1
 
             logger.info("========> Task ID {} organ {} <========".format(task_id, task_query.tasks[0]))
 
@@ -729,7 +740,7 @@ class ACL(object):
 
         for task_id, task_query in enumerate(tasks_to_evaluate):
 
-            self.original_label = self.organ_label_mapping(task_query.tasks[0]) if self.args.dataset == 'AAPM' else 1
+            self.original_label = self.organ_label_mapping(task_query.tasks[0]) # if self.args.dataset == 'AAPM' else 1
 
             logger.info("========> Task ID {} organ {} <========".format(task_id, task_query.tasks[0]))
 
@@ -789,7 +800,7 @@ class ACL(object):
         # NOTE: Task id changes in the loop to cover all trained tasks
         for task_id, task_query in enumerate(tasks_to_evaluate):
             # get the respective task data
-            self.original_label = self.organ_label_mapping(task_query.tasks[0]) if self.args.dataset == 'AAPM' else 1
+            self.original_label = self.organ_label_mapping(task_query.tasks[0]) #if self.args.dataset == 'AAPM' else 1
 
             logger.info("========> Task ID {} organ {} <========".format(task_id, task_query.tasks[0]))
 

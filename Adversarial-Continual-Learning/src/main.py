@@ -65,6 +65,8 @@ def run(args, run_id):
 
     if args.dataset == 'AAPM':
         tasks = all_data.aapm_data_queries(options=args)
+    elif args.dataset == 'structseg':
+        tasks = all_data.structseg_data_queries(options=args)
     else:
         tasks = all_data.ltrc_nlst_data_queries()
 
@@ -150,7 +152,14 @@ def main(args):
     for n in range(args.num_runs):
         args.checkpoint = orig_checkpoint
         args.name = str(orig_exp_name) + '/run_{}'.format(n)
-        utils.make_directories(args)
+
+        ROOT_DIR = os.path.dirname(os.path.abspath(sys.modules['__main__'].__file__))
+        if ROOT_DIR == "/code":
+            checkpoint_dir_polyaxon = utils.make_dirs_polyaxon()
+            args.checkpoint = checkpoint_dir_polyaxon
+        else:
+            utils.make_directories(args)
+
         configure_logging(args)
         print_options(args)
 

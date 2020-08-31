@@ -1,0 +1,32 @@
+---
+version: 1
+
+framework: pytorch
+
+kind: experiment
+
+build:
+  image: pytorch/pytorch
+  build_steps:
+    - apt-get update 
+    - apt-get -y install libgtk2.0-dev libgl1-mesa-glx
+    - pip install  --ignore-installed -r requirements.txt
+
+environment:
+  resources:
+    cpu:
+      requests: 3
+      limits: 4
+    memory:
+      requests: 4098
+    gpu: 
+      requests: 1
+      limits: 1
+
+declarations:
+    config: config.yaml
+
+  
+run:
+  cmd: python -u main.py --config={{config}}
+                         

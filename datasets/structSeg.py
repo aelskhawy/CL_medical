@@ -12,6 +12,9 @@ from utils import paths
 
 # left lung 1, right lung 2, heart 3, oesophagus 4?, trachea 5, spinal_cord 6
 
+def data_root_structSeg():
+    return Path("/home/skhawy/thesis/structseg")
+
 def all_organs() -> List[str]:
     return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
 
@@ -27,7 +30,7 @@ def get_all_preprocessed_patients(split: str, requested_organ_list: list) -> Lis
     """
     assert split is not None
 
-    csv_path = paths.data_root_structSeg() / "multi_organ_data_ss.csv"
+    csv_path = data_root_structSeg() / "multi_organ_data_ss.csv"
     df = pd.read_csv(csv_path)
     if split == 'Training':
         organ_scans = df.loc[(df['Organ'] == requested_organ_list[0]) & (df['split'] == split)].patient_id
@@ -40,17 +43,20 @@ def get_all_preprocessed_patients(split: str, requested_organ_list: list) -> Lis
     return patients_of_intrest
 
 
-def get_multi_organ_dataset(split: str, requested_organ_list=None, opt=None) -> List[Dataset]:
-    datasets = []
-    patient_list = get_all_preprocessed_patients(split, requested_organ_list)
 
+
+def get_multi_organ_dataset(split: str, debug_mode: bool, requested_organ_list=None,
+                            transforms=None, opt=None) -> List[Dataset]:
+    datasets = []
+    patient_list = get_all_preprocessed_patients(split, opt)
+    if debug_mode:
+        patient_list = patient_list[:2]
+    # print("len patient list", len(patient_list))
     for patient in patient_list:
         d = StructSegSinglePatient(split=split, patient_id=patient, requested_organ_list=requested_organ_list,
-                                   transform=process_item)
+                              transform=transforms, opt=opt)
+        # print("=req organ in get multi organ<================", d.requested_organ_list)
         datasets.append(d)
-
-    return datasets
-
 
 def experiment_data_folder_path(split: str) -> Path:
     """
@@ -59,13 +65,13 @@ def experiment_data_folder_path(split: str) -> Path:
     :return:
     """
 
-    folder_path = paths.data_root_structSeg() / split
+    folder_path = data_root_structSeg() / split
     return folder_path
 
 
 class StructSegSinglePatient(Dataset):
     def __init__(self, split=None, patient_id=None, requested_organ_list=None,
-                 dataset_file_path: Path = None, transform=None):
+                 dataset_file_path: Path = None, transform=None, opt=None):
         # Just making sure its a list
         if not isinstance(requested_organ_list, list):
             self.requested_organ_list = [requested_organ_list]

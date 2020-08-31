@@ -288,6 +288,16 @@ def print_running_acc_bwt(acc, task_num):
     print()
 
 
+def make_dirs_polyaxon():
+    from polyaxon_client.tracking import Experiment, get_data_paths, get_outputs_path
+
+    output_path = get_outputs_path()
+    CHECKPOINTS = os.path.join(output_path)
+    POLYAXON = True
+    print("CHECKPOINTS dir is", CHECKPOINTS)
+    return CHECKPOINTS
+
+
 def make_directories(args):
     # uid = uuid.uuid4().hex
     if args.checkpoint is None:
