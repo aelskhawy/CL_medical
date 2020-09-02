@@ -240,7 +240,7 @@ def get_all_preprocessed_patients(split: str, opt=None, requested_organ_list=Non
     # a small change for DGX
     # patients = set(os.listdir(str(preprocessed_data_root())))
     # patients = set([p for p in list(patients) if "LCTSC" in p])
-    csv_path = Path(opt.data_root_aapm) / "multi_organ_data.csv"
+    csv_path = input_data_root() / "multi_organ_data.csv"
 
     df = pd.read_csv(csv_path)
     patients = set(df.patient_id) # for DGX

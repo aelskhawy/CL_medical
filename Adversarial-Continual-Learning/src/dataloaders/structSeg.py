@@ -16,8 +16,10 @@ def data_root_structSeg():
 
 def all_organs() -> List[str]:
     # return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
-    # return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
-    return ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus', 'trachea']
+    # return ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus', 'trachea']  # orderA
+    # return ['oesophagus', 'heart', 'l_lung', 'r_lung', 'spinal_cord', 'trachea'] # OrderB
+    return [ 'l_lung', 'r_lung', 'spinal_cord',  'heart', 'oesophagus', 'trachea' ]  # OrderC
+
     # return ["l_lung",] # 'r_lung']
     # return ["spinal_cord"]
 

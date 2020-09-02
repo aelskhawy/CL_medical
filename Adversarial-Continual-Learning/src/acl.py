@@ -511,6 +511,7 @@ class ACL(object):
         dice_scores=[[], []]  # list of scores, one corresponding to each threshold
         iter = 0
         inputs, true_labels, pred_labels = [], [], []  # remember to drop last batch if it is not of the same size
+        task_shared_features = []
         with torch.no_grad():
             for batch, (data, target, tt, td) in enumerate(data_loader):
                 x=data.to(device=self.device)
@@ -523,6 +524,9 @@ class ACL(object):
                 output=self.model(x, x, tt, task_id)
 
                 shared_out, task_out = self.model.get_encoded_ftrs(x, x, task_id)
+                if self.args.extract_shared:
+                    # save the shared representation for the shared module for the task and save it for further processing
+                    task_shared_features.append(shared_out)
                 # Discriminator's performance:
                 # probably don't need to add sigmoid or softmax because we choose the location of the max output
                 # and in anycase the node that gives the max output will be the same after a sigmoid or softmax
@@ -586,7 +590,12 @@ class ACL(object):
                     utils.visualise_models_pred_results(x, y, output, vis_organ, self.checkpoint, iter)
                     iter += 1
 
-
+            if self.args.extract_shared:
+                # write saved shared features to the disk
+                task_shared_features = torch.stack(task_shared_features)  # nbatches x bs x latent_dim x1
+                task_shared_features = task_shared_features.detach().cpu().numpy().reshape(-1,256)
+                print("shared representation size", task_shared_features.shape)
+                np.savez_compressed(os.path.join(self.checkpoint, 'task_spine_model_{}_shared.npz'.format(vis_organ)), task_shared_features)
             if self.args.vis_seg:
                 self.input_slices_list.append(np.asarray(inputs).reshape(-1,256,256))
                 self.true_label_list.append(np.asarray(true_labels).reshape(-1,256,256))
@@ -619,14 +628,15 @@ class ACL(object):
         self.task_id = task_id
         tasks_to_evaluate = self.tasks[:task_id+1]
 
+        # to fetch the model of a specific organ
         self.organ = self.tasks[task_id].tasks[0]
         model_file = os.path.join(self.checkpoint, 'model_{}.pth.tar'.format(self.organ))
         if not os.path.exists(model_file):
             raise ValueError("No model found for {}".format(self.organ))
 
-        if not self.organ in ['r_lung']: #oesophagus
-            logger.info("skipping evaluation for {}".format(self.organ))
-            return
+        # if not self.organ in ['oesophagus']: #oesophagus
+        #     logger.info("skipping evaluation for {}".format(self.organ))
+        #     return
 
         self.model = self.load_checkpoint(self.organ)
         self.model.eval()
@@ -637,28 +647,38 @@ class ACL(object):
 
         # Fetch all data first then evaluate all models
         if len(self.eval_data_list) == 0:  # to avoid doing it every time
-            for task_id, task_query in enumerate(self.tasks):  # fetching for all data regardless
-                # if task_query.tasks[0] != "oesophagus":
-                #     continue
-                logger.info("========> Fetching data for organ {}".format(task_query.tasks[0]))
-                st = time.time()
-                if self.args.eval_split == "val":
-                    evaluation_data = self.get_validation_data(data_query=task_query,
-                                                               debug_mode=self.args.debug_mode,
-                                                               options=self.args)
-                else:
-                    evaluation_data = self.get_test_data(data_query=task_query,
-                                                         debug_mode=self.args.debug_mode,
-                                                         options=self.args)
-
-                    # evaluation_data = self.get_training_data(data_query=task_query,
-                    #                                      debug_mode=self.args.debug_mode,
-                    #                                      options=self.args)
-
+            if self.args.extract_shared:
+                # for this task we fetch only spinal cord cuz it's slices will have all the other organs
+                task_id, task_query = 0, self.tasks[0]
+                logger.info("fetching only spinal cord to extract shared features")
+                # st = time.time()
+                evaluation_data = self.get_test_data(data_query=task_query,
+                                                     debug_mode=self.args.debug_mode,
+                                                     options=self.args)
                 self.eval_data_list.append(evaluation_data)
-                en = time.time()
+            else:
+                for task_id, task_query in enumerate(self.tasks):  # fetching for all data regardless
+                    # if task_query.tasks[0] != "oesophagus":
+                    #     continue
+                    logger.info("========> Fetching data for organ {}".format(task_query.tasks[0]))
+                    st = time.time()
+                    if self.args.eval_split == "val":
+                        evaluation_data = self.get_validation_data(data_query=task_query,
+                                                                   debug_mode=self.args.debug_mode,
+                                                                   options=self.args)
+                    else:
+                        evaluation_data = self.get_test_data(data_query=task_query,
+                                                             debug_mode=self.args.debug_mode,
+                                                             options=self.args)
 
-                logger.info("Time for fetching the data {} min ".format((en - st) / 60))
+                        # evaluation_data = self.get_training_data(data_query=task_query,
+                        #                                      debug_mode=self.args.debug_mode,
+                        #                                      options=self.args)
+
+                    self.eval_data_list.append(evaluation_data)
+                    en = time.time()
+
+                    logger.info("Time for fetching the data {} min ".format((en - st) / 60))
 
 
 
@@ -669,6 +689,10 @@ class ACL(object):
             # get the respective task data
             # if task_query.tasks[0] != "oesophagus":
             #     continue
+            if self.args.extract_shared:
+                if task_id !=0 :
+                    continue
+                    # skipping all tasks, evaluating only for spinal cord
             self.original_label = self.organ_label_mapping(task_query.tasks[0]) #if self.args.dataset == 'AAPM' else 1
 
             logger.info("========> Task ID {} organ {} <========".format(task_id, task_query.tasks[0]))
@@ -684,7 +708,7 @@ class ACL(object):
             logger.info("*"*80)
             logger.info("Start evaluating model {} on task {}".format(self.organ, task_query.tasks))
             logger.info("*" * 80)
-            valid_res=self.eval_(eval_data_loader, task_id, phase="val", vis_organ=task_query.tasks[0])
+            valid_res=self.eval_(eval_data_loader, task_id, phase="val", vis_organ=self.organ) # vis_organ for shared extract
             utils.report_val(valid_res, self.checkpoint)
             logger.info(" \n")
             scores[task_query.tasks[0]] = valid_res['dice']

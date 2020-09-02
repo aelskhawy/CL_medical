@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 from continual_learning.model_base import CLModel
 from continual_learning.naive import NaiveModelMultiHead, LwFMultiHead
 from datasets import multi_organ_mix
-from datasets import AAPM
+from datasets import AAPM, structSeg
 from datasets.all_data import DataQuery
 from datasets.transforms import Transformer
 from experiments import metrics, evaluation
@@ -20,8 +20,8 @@ from utils.options import Options
 def continual_learning_tasks(options: Options) -> List[DataQuery]:
     if options.dataset == "AAPM":
         tasks = aapm_data_queries(options=options)
-    else:
-        tasks = multi_organ_data_queries()
+    else: # structseg
+        tasks = structseg_data_queries(options=options) #multi_organ_data_queries()
     return tasks
 
 # TODO: Return a proper data class to hold parameters, not just a dictionary!
@@ -40,7 +40,7 @@ def training_parameters(options: Options) -> Dict[str, Any]:
 
 
 def continual_learning_model(options: Options) -> CLModel:
-    if options.dataset == 'AAPM':
+    if options.dataset == 'AAPM' or options.dataset =="structseg":
         if options.replay_mode == "LwF":
             model = UNetMultiHead(in_channels=1, init_features=options.nfc,
                               task_list=['background'])
@@ -54,6 +54,7 @@ def continual_learning_model(options: Options) -> CLModel:
     else:
         model = SqueezeUnetMultiTask(channels=1, nclass=1, task_list=[])
         cl_model = NaiveModelMultiHead(initial_model=model, options=options)
+
 
     return cl_model
 
@@ -71,6 +72,16 @@ def aapm_data_queries(options=None) -> List[DataQuery]:
         return [DataQuery(tasks=AAPM.all_organs())]
     else:
         return [DataQuery(tasks=organ) for organ in AAPM.all_organs()]
+
+
+
+
+def structseg_data_queries(options=None) -> List[DataQuery]:
+    # logger.info("Training Order is {}".format(structSeg.all_organs()))
+    if options.replay_mode == "ideal":
+        return [DataQuery(tasks=structSeg.all_organs())]
+    else:
+        return [DataQuery(tasks=organ) for organ in structSeg.all_organs()]
 
 
 def multi_organ_data_queries() -> List[DataQuery]:

@@ -80,8 +80,7 @@ class NaiveModelMultiHead(CLModel):
             trainer = LwFTrainer(model_file_path=model_file_path, opt=self.options, label=training_label)
             loss_history = trainer.train(model=model, training_data=training_data,
                                          validation_data=validation_data,
-                                         num_epochs=self.options.num_epochs,
-                                         num_workers=self.options.num_workers)
+                                         num_epochs=self.options.num_epochs)
             return model, loss_history
 
         loss_history = training.train_model(model=model, training_data=training_data,
@@ -118,6 +117,8 @@ class LwFMultiHead(CLModel):
         self.__name__ = 'LwfMultiHead'
         self.options = options
         self.roi_order = ['background', 'spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
+        if self.options.dataset == 'structseg':
+            self.roi_order = ['background', "l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
 
     def task_output_index(self, task_name: str) -> Union[int, None]:
         # TODO: add to general "MultiHeadModel" class?

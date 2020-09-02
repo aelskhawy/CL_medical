@@ -14,9 +14,9 @@ class Options:
         parser.add_argument("-m", "--message", default="", type=str, required=False,
                             help="What is different in this trial", )
 
-        parser.add_argument("--yaml_file", dest='yaml_file', type=argparse.FileType(mode='r'),
+        parser.add_argument("--config", dest='config', type=argparse.FileType(mode='r'),
                             help="yaml file containing the run configs")
-
+        parser.add_argument("--num_classes", type=int, default=6, help="(default: 6) aapm, but structseg =7 ", )
         ########## For data Preprocessing ######
         parser.add_argument('--dataset', type=str, default='LTRC_NLST',
                             help='Dataset to work on LTRC_NLTS | AAPM')
@@ -77,10 +77,10 @@ class Options:
         """
         args = parser.parse_args()
         # print("yaml file", args.yaml_file)
-        if args.yaml_file:
-            data = yaml.load(args.yaml_file, Loader=yaml.FullLoader)
+        if args.config:
+            data = yaml.load(args.config, Loader=yaml.FullLoader)
             # print(data)
-            delattr(args, 'yaml_file')
+            delattr(args, 'config')
             # if yaml file is empty
             if data is None:
                 return args

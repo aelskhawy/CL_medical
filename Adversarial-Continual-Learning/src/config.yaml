@@ -6,10 +6,10 @@
 
 ################ Frequently changed options ######################
 #name: "half_sized_model_same_score"
-name: "all_6_ltrc_options" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #"aapm_sp_rl_ll_heart_eso"
+name:  "structseg_orderC" #   "aapm_sp_rl_ll_heart_eso" #"all_6_ltrc_options" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #""
 message: ""
 nepochs: 50
-dataset: structseg # AAPM, LTRC, structseg
+dataset:  structseg #AAPM # structseg # , LTRC, structseg
 #continue_train: True  # to continue training an existing model
 #debug_mode: True
 which_network: aspp # old | normal | aspp
@@ -23,9 +23,10 @@ ntasks: 6
 
 #
 #evaluate_only: True
-#eval_split: val # #test
+#eval_split: test # #test
 #vis_seg: True
 #tsne: "yes"
+#extract_shared: "yes"
 #per_vol_eval: True
 #vis_flag: True
 #start_eval_model: "spinal_cord"  #oesophagus #

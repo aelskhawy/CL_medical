@@ -44,11 +44,17 @@ class LwFTrainer:
         self.train_loss = []
         self.loss_names = ["Total_loss", "bce_loss", "KD_loss"]
         self.all_tasks = ['background', 'spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
+        if self.opt.dataset == 'structseg':
+            self.all_tasks = ['background', "l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
+
         self.val_dsc_scores_list = []
         self.val_loss = []
         self.epoch = 0
         self.loss_weights = [0.00026391335252852157, 0.34153133637858485, 0.011513810817807897,
                              0.014717132000521804, 0.038526956519617024,0.59344685093094]
+
+        # used for model saving
+        self.best_val_dice = 0
 
     @staticmethod
     def _combine_losses(training_losses: Dict[str, float], validation_losses: Dict[str, float]) -> \
@@ -246,6 +252,8 @@ class LwFTrainer:
 
             self.val_dsc_scores_list = np.asarray([(tensor.detach().cpu().numpy()) for
                                                    tensor in self.val_dsc_scores_list]).mean(axis=0)
+
+            self.best_val_dice = self.val_dsc_scores_list[1]  # 0 for background
             self.log_val_stats()
 
             return average_losses
@@ -318,15 +326,25 @@ class LwFTrainer:
 
         loss_history = dict()
         self.iteration = 0
-        # self.eval_active_tasks()
+        self.eval_active_tasks()
+        local_best_val_dice = 0
+        # only 10 epochs for the 1st organ to avoid the model getting stuck in the space of the 1st model's weights
+        num_epochs = num_epochs if len(active_classes) > 2 else 30 #10 for all except oesophagus
         for epoch in range(1, num_epochs + 1):
             self.epoch = epoch
             logger.info(f'Epoch {epoch} - Training')
             training_losses = self.train_one_epoch()
             logger.info(f'Epoch {epoch} - Validation')
             validation_losses = self.eval_one_epoch()
-            # if not self.replay_mode == 'ideal':
-            #     self.eval_active_tasks()
+
+            # save the model that gives the highest dice, just for reference later
+            if self.best_val_dice > local_best_val_dice:
+                local_best_val_dice = self.best_val_dice
+                self.save_best_val_dice(self.model, epoch)
+                print("saving best validation dice model at epoch {}".format(epoch))
+
+            if not self.replay_mode == 'ideal' and epoch% 5 == 0:
+                self.eval_active_tasks()
             # self._output_losses(training_losses=training_losses, validation_losses=validation_losses,
             #                     writer=writer, epoch=epoch)
 
@@ -362,6 +380,11 @@ class LwFTrainer:
 
         return loss_history
 
+    def save_best_val_dice(self, model, epoch):
+        '''Saves model when validation loss decrease.'''
+        self.model_file_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(model, str(self.model_file_path) + "_{}_best_dice".format(epoch))
+        torch.save(model.state_dict(), str(self.model_file_path) + "_{}_best_dice.state_dict".format(epoch))
 
     def save_each_epoch(self, model, epoch):
         '''Saves model when validation loss decrease.'''
@@ -418,7 +441,7 @@ class LwFTrainer:
         :return: dice scores
         """
         self.smooth = 1
-        y_true_one_hot = self.make_one_hot(y_true, num_classes=6)
+        y_true_one_hot = self.make_one_hot(y_true, num_classes=self.opt.num_classes)  # 6 for appm , 7 for structseg
         # if self.replay_mode == "LwF":
         present_class = list(torch.unique(y_true).detach().cpu().numpy())  # [0, the other class]
         present_class = [int(x) for x in present_class]

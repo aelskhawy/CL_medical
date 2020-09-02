@@ -11,9 +11,9 @@ def configure_logging(args):
     root.setLevel(logging_level)
 
     if "aelskhawy" in str(args.checkpoint):  # polyaxon created output path
-        log_file = os.path.join(args.checkpoint, "/logger.info")  # polyaxon
+        log_file = os.path.join(args.checkpoint, "/new_logger.info")  # polyaxon
     else:
-        log_file = os.path.join('./checkpoints/', args.name + "/logger.info")
+        log_file = os.path.join('./checkpoints/', args.name + "/new_logger.info")
 
     # Stdout
     handler = logging.StreamHandler(sys.stdout)
