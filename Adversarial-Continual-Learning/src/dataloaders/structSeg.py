@@ -15,10 +15,10 @@ def data_root_structSeg():
     return Path("/data/structseg_preprocessed")  #polyaxon
 
 def all_organs() -> List[str]:
-    # return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
+    return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
     # return ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus', 'trachea']  # orderA
     # return ['oesophagus', 'heart', 'l_lung', 'r_lung', 'spinal_cord', 'trachea'] # OrderB
-    return [ 'l_lung', 'r_lung', 'spinal_cord',  'heart', 'oesophagus', 'trachea' ]  # OrderC
+    # return [ 'l_lung', 'r_lung', 'spinal_cord',  'heart', 'oesophagus', 'trachea' ]  # OrderC
 
     # return ["l_lung",] # 'r_lung']
     # return ["spinal_cord"]
@@ -204,7 +204,7 @@ class StructSegSinglePatient(Dataset):
             x, y = self.transform(x, y)
 
         # Changing the output to fit other functions
-        return x, y, self.tt, self.td
+        return x, y, 1, 1   # disc will need to diff between noise (0) and the 5 tasks (1)
 
     def __len__(self):
         return self.len

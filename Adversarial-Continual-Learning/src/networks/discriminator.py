@@ -7,7 +7,7 @@ import torch
 import utils
 
 class Discriminator(torch.nn.Module):
-    def __init__(self,args,task_id):
+    def __init__(self,args):
         super(Discriminator, self).__init__()
 
         self.num_tasks=args.ntasks
@@ -17,18 +17,18 @@ class Discriminator(torch.nn.Module):
         if args.diff == 'yes':
             print("Disc with Gradient reversal layer")
             self.dis = torch.nn.Sequential(
-                GradientReversal(args.lam),  
+                GradientReversal(args.lam),
                 torch.nn.Linear(self.latent_dim, args.units),
                 torch.nn.LeakyReLU(),
                 torch.nn.Linear(args.units, args.units),
-                torch.nn.Linear(args.units, task_id + 2)
+                torch.nn.Linear(args.units, 6)
             )
         else:
             self.dis = torch.nn.Sequential(
                 torch.nn.Linear(self.latent_dim, args.units),
                 torch.nn.LeakyReLU(),
                 torch.nn.Linear(args.units, args.units),
-                torch.nn.Linear(args.units, task_id + 2)
+                torch.nn.Linear(args.units, 6)
             )
 
 

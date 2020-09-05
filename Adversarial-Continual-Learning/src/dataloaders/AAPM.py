@@ -355,7 +355,7 @@ class AAPMSinglePatient(Dataset):
             x, y = self.transform(x, y)
 
         # Changing the output to fit other functions
-        return x, y, self.tt, self.td
+        return x, y, 1, 1   # disc will need to diff between noise (0) and the 5 tasks (1)
         # self.input_dict['slice'] = x
         # self.input_dict['gt'] = y
         # self.input_dict['metadata'] = dict()

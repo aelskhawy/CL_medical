@@ -63,6 +63,8 @@ def run(args, run_id):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+    # if args.joint = true, this will return one query with all tasks included
+
     if args.dataset == 'AAPM':
         tasks = all_data.aapm_data_queries(options=args)
     elif args.dataset == 'structseg':
@@ -81,52 +83,23 @@ def run(args, run_id):
     # Approach
 
     appr=approach(net,tasks, args,network=network)
-
-
-    # Loop tasks
-    acc=np.zeros((len(tasks),len(tasks)),dtype=np.float32)
-    lss=np.zeros((len(tasks),len(tasks)),dtype=np.float32)
-    accumalted_scores = list()
-    # exit()
-    for task_id in range(len(tasks)):
-
-        if args.vis_seg:
-            appr.vis_segmentation(task_id)
-        # Extract embeddings to plot in tensorboard
-        if args.tsne == 'yes':
-            appr.get_tsne_embeddings(task_id)
-            continue
-            # appr.get_tsne_embeddings_last_three_tasks(dataset, model=appr.load_model(t))
-
         # Evaluate only
-        if args.evaluate_only:
-            if args.per_vol_eval:
-                appr.eval_all_per_vol(task_id)
-            else:
-                model_score = appr.eval_all(task_id)
-                accumalted_scores.append(model_score)
-            continue
+    if args.evaluate_only:
+        if args.per_vol_eval:
+            appr.eval_all_per_vol()
         else:
-            # Train
-            appr.train(task_id)
-        print('-'*250)
-        print()
+            appr.eval_all()
+            # accumalted_scores.append(model_score)
 
-    logger.info("accumlated scores {} ".format(accumalted_scores))
+    else:
+        # Train
+        appr.train()
+    print('-'*250)
+    print()
 
     # compute the Omega scores
-    if args.evaluate_only:
-        # TODO: change the list order according to the training order of the sequential model
-        # spine, rlung, llung, heart, eso
-        # ideal_scores = [0.82975502, 0.90576659, 0.9092284 , 0.89274852, 0.58869449] # order a
-        ideal_scores = [0.58869449, 0.89274852, 0.9092284,  0.90576659, 0.82975502 ] # eso - h- rl -ll -sp
 
-        omega_scores = utils.proposed_cl_metric(accumalted_scores, ideal_scores)
-    else:
-        accumalted_scores, omega_scores = 0, 0
-
-    logger.info("omega scores {}".format(omega_scores))
-    return accumalted_scores, omega_scores
+    return [], [] #accumalted_scores, omega_scores
 
 
 
@@ -164,32 +137,10 @@ def main(args):
         print_options(args)
 
         logger.info("Experiement dir {}/{}".format(args.checkpoint, args.name))
-
         # You can use whatever seed you want!
         args.seed = 123
         logger.info(" >>>> Run # {} ".format(n))
-        accumalted_scores, omega_scores = run(args, n)
-        accum_scores_list.append(accumalted_scores)
-        omega_scores_list.append(omega_scores)
-
-
-    if args.evaluate_only:
-        # compute mean and std of the dice scores and omega scores
-        omega_scores_all = np.asarray(omega_scores_list).reshape(3,3)
-        logger.info("mean omegas {}".format(omega_scores_all.mean(axis=0)))
-        logger.info("std omegas {}".format(omega_scores_all.std(axis=0)))
-
-        avg_dice_scores, std_dice_scores = [], []
-        for model_id in range(5):
-            scores_list = []
-            for run_id in range(3):
-                scores_list.append(accum_scores_list[run_id][model_id])
-            scores_list = np.asarray(scores_list)
-            avg_dice_scores.append(scores_list.mean(axis=0))
-            std_dice_scores.append(scores_list.std(axis=0))
-
-        logger.info("avg dice scores {}".format(avg_dice_scores))
-        logger.info("std dice scores {}".format(std_dice_scores))
+        _, _ = run(args, n)
 
     print ("All Done! ")
     print('[Elapsed time = {:.1f} min]'.format((time.time()-tstart)/(60)))

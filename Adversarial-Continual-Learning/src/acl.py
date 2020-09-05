@@ -23,7 +23,7 @@ from networks.discriminator import Discriminator
 from dataloaders.all_data import get_data, DataQuery, Split
 from typing import List, Union, Dict, Tuple
 from torch.utils.data import ConcatDataset, Dataset
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import logging
 logger = logging.getLogger(__name__)
 
@@ -33,30 +33,17 @@ class ACL(object):
         self.args=args
         self.nepochs=args.nepochs
         self.batch_size = args.batch_size
-        self.tasks = tasks
+        self.tasks = tasks #[0]  # One Dataquery containing all organs
 
-        if self.args.dataset == 'AAPM':
-            self.ROI_order = ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
-        else:
-            self.ROI_order = ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
-
+        self.ROI_order = ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
         # optimizer & adaptive lr
         self.e_lr=args.e_lr
         self.d_lr=args.d_lr
 
-        if not args.experiment == 'multidatasets':
-            self.e_lr=[args.e_lr] * args.ntasks
-            self.d_lr=[args.d_lr] * args.ntasks
-        else:
-            self.e_lr = [self.args.lrs[i][1] for i in range(len(args.lrs))]
-            self.d_lr = [self.args.lrs[i][1]/10. for i in range(len(args.lrs))]
-            print ("d_lrs : ", self.d_lr)
 
         self.lr_min=args.lr_min
         self.lr_factor=args.lr_factor
         self.lr_patience=args.lr_patience
-
-        self.samples=args.samples
 
         self.device=args.device
         self.checkpoint=args.checkpoint
@@ -75,23 +62,23 @@ class ACL(object):
 
         # Initialize generator and discriminator
         self.model=model
-        self.discriminator=self.get_discriminator(0)
+        self.discriminator=self.get_discriminator()
         self.discriminator.get_size()
 
         self.latent_dim=args.latent_dim
 
         # self.task_loss = torch.nn.CrossEntropyLoss().to(self.device)
-        self.task_loss=  torch.nn.BCEWithLogitsLoss().to(self.device) #FocalLoss() #
-        self.dice_loss = DiceLoss().to(self.device)
+        self.task_loss=  JointBceLoss().to(self.device)
+        # self.dice_loss = DiceLoss().to(self.device)
         # self.focal_loss = FocalLoss() #
         self.adversarial_loss_d=torch.nn.CrossEntropyLoss().to(self.device)
         self.adversarial_loss_s=torch.nn.CrossEntropyLoss().to(self.device)
-        self.diff_loss=DiffLoss().to(self.device)
+        self.diff_loss=JointDiffLoss().to(self.device)
 
-        self.optimizer_S=self.get_S_optimizer(0)
-        self.optimizer_D=self.get_D_optimizer(0)
+        self.optimizer_S=self.get_S_optimizer()
+        self.optimizer_D=self.get_D_optimizer()
 
-        # self.create_summary_writer()
+        self.create_summary_writer()
 
         self.task_encoded={}
 
@@ -100,31 +87,23 @@ class ACL(object):
 
         self.epoch = 0
 
-        self.eval_data_list = []
-
-        #saved for visualizing segmentation over multiple iterations
-        # a list containing all true/pred labels for [spine, rlung, llung, heart, eso]
-        self.input_slices_list = []
-        self.true_label_list = []
-        self.pred_label_list = []
-
     def create_summary_writer(self):
         self.eval_summary_writer = SummaryWriter()
 
-    def get_discriminator(self, task_id):
-        discriminator=Discriminator(self.args, task_id).to(self.args.device)
+    def get_discriminator(self):
+        discriminator=Discriminator(self.args).to(self.args.device)
         # print(discriminator)
         return discriminator
 
-    def get_S_optimizer(self, task_id, e_lr=None):
-        if e_lr is None: e_lr=self.e_lr[task_id]
+    def get_S_optimizer(self, e_lr=None):
+        if e_lr is None: e_lr=self.e_lr
         # optimizer_S=torch.optim.SGD(self.model.parameters(), momentum=self.args.mom,
         #                             weight_decay=self.args.e_wd, lr=e_lr)
         optimizer_S = torch.optim.Adam(self.model.parameters(), lr=e_lr, weight_decay=self.args.e_wd)
         return optimizer_S
 
-    def get_D_optimizer(self, task_id, d_lr=None):
-        if d_lr is None: d_lr=self.d_lr[task_id]
+    def get_D_optimizer(self, d_lr=None):
+        if d_lr is None: d_lr=self.d_lr
         optimizer_D=torch.optim.SGD(self.discriminator.parameters(), weight_decay=self.args.d_wd, lr=d_lr)
         # optimizer_D = torch.optim.Adam(self.discriminator.parameters(), lr=d_lr, weight_decay=0)
         return optimizer_D
@@ -161,7 +140,7 @@ class ACL(object):
 
     def get_test_data(self, data_query: DataQuery, debug_mode: bool = False, options=None) \
             -> Tuple[Dataset, Dataset]:
-        test_data_volumes = get_data(query=data_query, split=Split.FinalEvaluation,  #if self.args.dataset =='AAPM' else Split.DevelopmentTest,
+        test_data_volumes = get_data(query=data_query, split=Split.FinalEvaluation if self.args.dataset =='AAPM' else Split.DevelopmentTest,
                                      debug_mode=debug_mode, options=options)
 
         if options.per_vol_eval:
@@ -180,30 +159,19 @@ class ACL(object):
         # returns the corresponding label for a certain organ
         return self.ROI_order.index(organ) + 1
 
-    def train(self, task_id):
+    def train(self):
 
         # Before training a task check if there is a checkpoint for it, and load it
-        self.organ = self.tasks[task_id].tasks[0]
-        model_file = os.path.join(self.checkpoint, 'model_{}.pth.tar'.format(self.organ))
+        model_file = os.path.join(self.checkpoint, 'model.pth.tar')
         if os.path.exists(model_file):
-            self.model = self.load_checkpoint(self.organ)
+            self.model = self.load_checkpoint()
 
             if not self.args.continue_train:
                 return
-            if not self.organ in  ["l_lung"]: # "heart", "oesophagus"
-                return
-
-        self.discriminator=self.get_discriminator(task_id)
-        # disc_checkpoint_file = os.path.join(self.checkpoint, 'discriminator_{}.pth.tar'.format(self.organ))
-        # if os.path.exists(disc_checkpoint_file):
-        #     disc_checkpoint = torch.load(disc_checkpoint_file)
-        #     self.discriminator.load_state_dict(disc_checkpoint['model_state_dict'])
-        #     self.discriminator.to(self.device)
-        #     logger.info("Loading disc check point for organ {}".format(self.organ))
-        #
-        #     if not self.args.continue_train:
+        #     if not self.organ in  ["oesophagus"]: # "heart", "oesophagus"
         #         return
-
+        #
+        # self.discriminator=self.get_discriminator(task_id)
 
         best_loss=np.inf
         best_val_score = 0
@@ -214,18 +182,21 @@ class ACL(object):
         best_model_d=utils.get_model(self.discriminator)
 
         dis_lr_update=True  #????
-        d_lr=self.d_lr[task_id]
+        d_lr=self.d_lr
         patience_d=self.lr_patience
-        self.optimizer_D=self.get_D_optimizer(task_id, d_lr)
+        self.optimizer_D=self.get_D_optimizer(d_lr)
 
-        e_lr=self.e_lr[task_id]
+        e_lr=self.e_lr
         patience=self.lr_patience
-        self.optimizer_S=self.get_S_optimizer(task_id, e_lr)
+        self.optimizer_S=self.get_S_optimizer(e_lr)
 
-
+        task_query = self.tasks[0]  # one query containing 5 organs
+        # print(task_query)
+        # print(type(task_query[0]))
+        # exit()
         # get the respective task data
-        task_query = self.tasks[task_id]
-        self.original_label = self.organ_label_mapping(task_query.tasks[0])  #if self.args.dataset == 'AAPM' else 1
+        # task_query = self.tasks[task_id]
+        # self.original_label = self.organ_label_mapping(task_query.tasks[0]) if self.args.dataset == 'AAPM' else 1
 
         st=time.time()
         training_data = self.get_training_data(data_query=task_query,
@@ -258,39 +229,16 @@ class ACL(object):
             # Train
             clock0=time.time()
             # print("ddata loader len before", len(training_data_loader))
-            self.train_epoch(training_data_loader, task_id)
+            self.train_epoch(training_data_loader)
             # print("ddata loader len after", len(training_data_loader))
             clock1=time.time()
             logger.info("Epoch time {} ".format((clock1-clock0)/60))
-            train_res=self.eval_(training_data_loader, task_id, phase='train', vis_organ=self.organ)
+            train_res=self.eval_(training_data_loader)
             utils.report_tr(train_res, e, self.batch_size, clock0, clock1, self.checkpoint)
-
-            # TODO: check this later
-            # lowering the learning rate in the beginning if it predicts random chance for the first 5 epochs
-            # if (self.args.experiment == 'cifar100' or self.args.experiment == 'miniimagenet') and e == 4:
-            #     random_chance=20.
-            #     threshold=random_chance + 2
-            #
-            #     if train_res['acc_t'] < threshold:
-            #         # Restore best validation model
-            #         d_lr=self.d_lr[task_id] / 10.
-            #         self.optimizer_D=self.get_D_optimizer(task_id, d_lr)
-            #         logger.info("Performance on task {} is {} so Dis's lr is decreased to {}".format(task_id, train_res[
-            #             'acc_t'], d_lr))
-            #
-            #         e_lr=self.e_lr[task_id] / 10.
-            #         self.optimizer_S=self.get_S_optimizer(task_id, e_lr)
-            #
-            #         self.discriminator=self.get_discriminator(task_id)
-            #
-            #         if task_id > 0:
-            #             self.model=self.load_checkpoint(task_id - 1)
-            #         else:
-            #             self.model=self.network.Net(self.args).to(self.args.device)
 
 
             # Valid
-            valid_res=self.eval_(validation_data_loader, task_id, phase="val", vis_organ=self.organ) #
+            valid_res=self.eval_(validation_data_loader) #
             logger.info(" \n ")
             # logger.info(" \n ")
             utils.report_val(valid_res, self.checkpoint)
@@ -303,8 +251,8 @@ class ACL(object):
             #     best_model=utils.get_model(self.model)
             #     patience=self.lr_patience
             #     logger.info(' *')
-            if valid_res['dice'][0] > best_val_score:
-                best_val_score = valid_res['dice'][0]
+            if valid_res['dice'].mean() > best_val_score:
+                best_val_score = valid_res['dice'].mean()
                 best_model = utils.get_model(self.model)
                 patience = self.lr_patience
                 logger.info(' *')
@@ -317,7 +265,7 @@ class ACL(object):
                         logger.info(" \n")
                         break
                     patience=self.lr_patience
-                    self.optimizer_S=self.get_S_optimizer(task_id, e_lr)
+                    self.optimizer_S=self.get_S_optimizer(e_lr)
 
             if train_res['loss_a'] < best_loss_d:
                 best_loss_d=train_res['loss_a']
@@ -333,29 +281,20 @@ class ACL(object):
                         logger.info("========= > Dis lr reached minimum value")
                         logger.info( "\n")
                     patience_d=self.lr_patience
-                    self.optimizer_D=self.get_D_optimizer(task_id, d_lr)
+                    self.optimizer_D=self.get_D_optimizer(d_lr)
             logger.info(" \n")
 
             # Saving the model each epoch just in case
-            self.save_all_models(self.organ)
+            self.save_all_models()
 
         # Restore best validation model (early-stopping) after training the task is over
         logger.info("===== > Restoring best validation model")
         self.model.load_state_dict(copy.deepcopy(best_model))
         self.discriminator.load_state_dict(copy.deepcopy(best_model_d))
 
-        self.save_all_models(self.organ)
+        self.save_all_models()
 
-        self.freeze_respective_pvt_module(task_id)
-
-
-    def freeze_respective_pvt_module(self, task_id):
-        logger.info("Freezing private module {}".format(self.model.private[task_id].__name__))
-        for p in self.model.private[task_id].parameters():
-            p.requires_grad = False
-
-
-    def train_epoch(self, training_data_loader, task_id):
+    def train_epoch(self, training_data_loader):
 
         self.model.train()
         self.discriminator.train()
@@ -366,13 +305,14 @@ class ACL(object):
 
         for data, target, tt, td in training_data_loader:
             x=data.to(device=self.device)
-            y=(target == self.original_label).type(torch.FloatTensor).to(device=self.device)
+            y= target #(target == self.original_label).type(torch.FloatTensor).to(device=self.device)
             tt=tt.to(device=self.device)
 
             # print("min input {} max input {}".format(torch.min(x), torch.max(x)))
             # print("unique target {} , unique y {}".format(torch.unique(target), torch.unique(y)))
-            # print("tt is", tt)
+            # continue
             # print("unique target", torch.unique(target))
+            # exit()
             # print("unique y", torch.unique(y))
             # Detaching samples in the batch which do not belong to the current task before feeding them to P
             # Thats because she uses memory sometimes that contains samples from previous tasks
@@ -400,12 +340,10 @@ class ACL(object):
                 self.model.zero_grad()
 
                 #x_task_module goes through P modules and contains only the samples that belongs to the current task
-                output=self.model(x, x, tt, task_id)  # x_task_module
+                output, shared_encoded, task_encoded=self.model(x, x)  # x_task_module
                 # print(output.type(), y.type())
 
-                task_loss = self.task_loss(output, y) #+ 0.0 * self.dice_loss(output, y)
-
-                shared_encoded, task_encoded=self.model.get_encoded_ftrs(x, x, task_id)  #x_task_module
+                task_loss = self.task_loss(output, y, [0]) #+ 0.0 * self.dice_loss(output, y)
                 # uses only the shared_encoded_input, check the implementation of the disc
                 dis_out_gen_training=self.discriminator.forward(shared_encoded) #, t_real_D, task_id)
                 # print("max in input {}".format(torch.max(x)))
@@ -423,9 +361,6 @@ class ACL(object):
 
                 total_loss=task_loss + self.adv_loss_reg * adv_loss + self.diff_loss_reg * diff_loss
 
-                # total_loss += focal_loss * 0.5
-                # #######
-                # total_loss = task_loss  # comment this if u wanna add all losses
                 total_loss.backward(retain_graph=True)
 
                 self.optimizer_S.step()  ## optimizes the whole net (shared and private and heads)
@@ -445,9 +380,8 @@ class ACL(object):
                 self.discriminator.zero_grad()
 
                 # training discriminator on real data
-                output=self.model(x, x, tt, task_id)  #x_task_module
-                shared_encoded, task_out=self.model.get_encoded_ftrs(x, x, task_id)  #x_task_module
-                # TODO: remove detach
+                output, shared_encoded, task_out=self.model(x, x)  #x_task_module
+                # shared_encoded, task_out=self.model.get_encoded_ftrs(x, x, task_id)  #x_task_module
                 dis_real_out=self.discriminator.forward(shared_encoded.detach()) #.detach(), t_real_D, task_id)
                 dis_real_loss=self.adversarial_loss_d(dis_real_out, t_real_D)
 
@@ -461,7 +395,6 @@ class ACL(object):
                 # uses only the firts input, check the implementation of the disc, no use of t_real_d and taskid
                 dis_fake_out=self.discriminator.forward(z_fake) #, t_real_D, task_id)
                 dis_fake_loss=self.adversarial_loss_d(dis_fake_out, t_fake_D)
-                # if self.args.experiment == 'miniimagenet':
                 dis_fake_loss*=self.adv_loss_reg
                 dis_fake_loss.backward(retain_graph=True)
 
@@ -478,7 +411,7 @@ class ACL(object):
                 real_dis+=dis_real_loss.item()
 
             report_iter += 1
-            if report_iter % 5 == 0:
+            if report_iter % 1 == 0:
                 denom = report_iter * self.batch_size
                 logger.info("*****s_adv_loss: {} ,"
                           " diff_loss: {:.3f}, fake_loss_dis: {:.3f}, real_loss_dis: {:.3f}, "
@@ -498,7 +431,7 @@ class ACL(object):
         return
 
 
-    def eval_(self, data_loader, task_id, phase="train", vis_organ="None"):
+    def eval_(self, data_loader, vis_organ="None"):
         loss_a, loss_t, loss_d, loss_total=0, 0, 0, 0
         correct_d, correct_t = 0, 0
         num=0
@@ -508,25 +441,19 @@ class ACL(object):
         self.discriminator.eval()
 
         res={}
-        dice_scores=[[], []]  # list of scores, one corresponding to each threshold
+        dice_scores=[]  # list of scores, one corresponding to each threshold
         iter = 0
-        inputs, true_labels, pred_labels = [], [], []  # remember to drop last batch if it is not of the same size
-        task_shared_features = []
         with torch.no_grad():
             for batch, (data, target, tt, td) in enumerate(data_loader):
                 x=data.to(device=self.device)
-                y=(target == self.original_label).type(torch.FloatTensor).to(device=self.device)
+                y= target
                 tt=tt.to(device=self.device)
                 t_real_D=td.to(self.device)
 
                 # print(torch.unique(y), torch.unique(target))
                 # Forward
-                output=self.model(x, x, tt, task_id)
+                output, shared_out, task_out=self.model(x, x)
 
-                shared_out, task_out = self.model.get_encoded_ftrs(x, x, task_id)
-                if self.args.extract_shared:
-                    # save the shared representation for the shared module for the task and save it for further processing
-                    task_shared_features.append(shared_out)
                 # Discriminator's performance:
                 # probably don't need to add sigmoid or softmax because we choose the location of the max output
                 # and in anycase the node that gives the max output will be the same after a sigmoid or softmax
@@ -535,8 +462,8 @@ class ACL(object):
                 _, pred_d = output_d.max(1)  # Batch x n_outputs
                 correct_d += pred_d.eq(t_real_D.view_as(pred_d)).sum().item()
                 # # Loss values
-                task_loss = torch.tensor(0).to(device=self.device, dtype=torch.float32) #self.task_loss(output, y) # + 0.0 * self.dice_loss(output, y)
-                adv_loss = torch.tensor(0).to(device=self.device, dtype=torch.float32) #self.adversarial_loss_d(output_d, t_real_D)
+                task_loss = self.task_loss(output, y, [0]) # + 0.0 * self.dice_loss(output, y)
+                adv_loss = self.adversarial_loss_d(output_d, t_real_D)
 
                 if self.diff == 'yes':
                     diff_loss = self.diff_loss(shared_out, task_out)
@@ -550,67 +477,32 @@ class ACL(object):
                 # total_loss = task_loss
                 # compute dice scores and save some samples of the segmentation for sanity check
                 output = torch.sigmoid(output)
-
-                for i, t in enumerate([0.5, 0.7]):
-                    final_pred = (output >= t)
-
-                    final_pred= final_pred.type(torch.FloatTensor)
-                    # print("passed this point")
-                    final_pred = final_pred.to(self.device)
-                    # print("tensor on gpu")
+                for i, t in enumerate([0.5]):
+                    final_pred = (output >= t).type(torch.FloatTensor).to(self.device)
                     dice_score = self.compute_dice_score(final_pred, y)
-                    if self.args.vis_seg and t == 0.5:
-                        print("dice score of slice {} is {}".format(batch, dice_score))
-                    dice_scores[i].append(dice_score) # .item()
-                # logger.info("dice score of slice {} is {}".format(batch, dice_scores))
-                num += x.size(0)
-
-                loss_t+=task_loss
-                loss_a+=adv_loss
-                loss_d+=diff_loss
-                loss_total+=total_loss
-
-                #### For visualisation purposes
-                if self.args.vis_seg:
-                    # print(" x size {}".format(x.size()[0]))
-                    if x.size()[0] == self.args.batch_size:  # dropping last batch if not of the same size for simplicity
-                        inputs.append(x.detach().cpu().numpy())
-                        true_labels.append(target.detach().cpu().numpy())
-                        predictions = (output >= 0.5).type(torch.FloatTensor)
-                        predictions[predictions == 1 ] = self.original_label  # to reverse it to the original label scheme
-                        # print("original label {}".format(self.original_label))
-                        # print("unique predition after assigning {}".format(torch.unique(predictions)))
-                        pred_labels.append(predictions.detach().cpu().numpy())
-                        # print(type(inputs))
-                        # print(inputs[0])
-                        # print("inputs size {}".format(inputs[0].shape))
+                    # print(dice_score)
+                    dice_scores.append(dice_score) # .item()
 
                 if self.args.vis_flag:
                     # TODO: limit the number of samples you save each epoch
                     utils.visualise_models_pred_results(x, y, output, vis_organ, self.checkpoint, iter)
                     iter += 1
 
-            if self.args.extract_shared:
-                # write saved shared features to the disk
-                task_shared_features = torch.stack(task_shared_features)  # nbatches x bs x latent_dim x1
-                task_shared_features = task_shared_features.detach().cpu().numpy().reshape(-1,256)
-                print("shared representation size", task_shared_features.shape)
-                np.savez_compressed(os.path.join(self.checkpoint, 'task_spine_model_{}_shared.npz'.format(vis_organ)), task_shared_features)
-            if self.args.vis_seg:
-                self.input_slices_list.append(np.asarray(inputs).reshape(-1,256,256))
-                self.true_label_list.append(np.asarray(true_labels).reshape(-1,256,256))
-                self.pred_label_list.append(np.asarray(pred_labels).reshape(-1,256,256))
-                # print("input list 0 size {}".format(self.input_slices_list[0].shape))
+                loss_t+=task_loss
+                loss_a+=adv_loss
+                loss_d+=diff_loss
+                loss_total+=total_loss
+
                 # loss_t+=task_loss
                 # loss_a+= torch.tensor([0])
                 # loss_d+= torch.tensor([0])
                 # loss_total+=total_loss
 
+                num+=x.size(0)
 
-
-        # should return a list of 2 numbers, representing the score for 2 thresholds
-        dice_scores_to_report =  [np.asarray(scores).mean() for scores in dice_scores] #np.asarray(dice_scores).mean() #
-
+        dice_scores_to_report = np.asarray(dice_scores).mean(axis=0)
+        # print(dice_scores_to_report.shape)
+        # exit()
         res['loss_t'], res['dice']=loss_t.item() / (batch + 1), dice_scores_to_report #np.inf #100 * correct_t / num
         res['loss_a'], res['acc_d']=loss_a.item() / (batch + 1), 100 * correct_d / num
         res['loss_d']=loss_d.item() / (batch + 1)
@@ -620,190 +512,52 @@ class ACL(object):
         return res
 
     #
-    def eval_all(self, task_id):
+    def eval_all(self):
         """
         This function is being called after training is done, to evaluate the current task and all the previous ones
         """
-        eval_score_list_of_lists = list()
-        self.task_id = task_id
-        tasks_to_evaluate = self.tasks[:task_id+1]
-
-        # to fetch the model of a specific organ
-        self.organ = self.tasks[task_id].tasks[0]
-        model_file = os.path.join(self.checkpoint, 'model_{}.pth.tar'.format(self.organ))
+        print("########### EVALUATION#######################")
+        model_file = os.path.join(self.checkpoint, 'model.pth.tar')
         if not os.path.exists(model_file):
             raise ValueError("No model found for {}".format(self.organ))
 
-        # if not self.organ in ['oesophagus']: #oesophagus
-        #     logger.info("skipping evaluation for {}".format(self.organ))
-        #     return
-
-        self.model = self.load_checkpoint(self.organ)
-        self.model.eval()
-        # this needs to get the task names instead of tasks_to_evaluate
-        # if not self.args.start_eval_model in tasks_to_evaluate:
-        #     logger.info("skipping evaluation for {}".format(self.organ))
-        #     return
-
-        # Fetch all data first then evaluate all models
-        if len(self.eval_data_list) == 0:  # to avoid doing it every time
-            if self.args.extract_shared:
-                # for this task we fetch only spinal cord cuz it's slices will have all the other organs
-                task_id, task_query = 0, self.tasks[0]
-                logger.info("fetching only spinal cord to extract shared features")
-                # st = time.time()
-                evaluation_data = self.get_test_data(data_query=task_query,
-                                                     debug_mode=self.args.debug_mode,
-                                                     options=self.args)
-                self.eval_data_list.append(evaluation_data)
-            else:
-                for task_id, task_query in enumerate(self.tasks):  # fetching for all data regardless
-                    # if task_query.tasks[0] != "oesophagus":
-                    #     continue
-                    logger.info("========> Fetching data for organ {}".format(task_query.tasks[0]))
-                    st = time.time()
-                    if self.args.eval_split == "val":
-                        evaluation_data = self.get_validation_data(data_query=task_query,
-                                                                   debug_mode=self.args.debug_mode,
-                                                                   options=self.args)
-                    else:
-                        evaluation_data = self.get_test_data(data_query=task_query,
-                                                             debug_mode=self.args.debug_mode,
-                                                             options=self.args)
-
-                        # evaluation_data = self.get_training_data(data_query=task_query,
-                        #                                      debug_mode=self.args.debug_mode,
-                        #                                      options=self.args)
-
-                    self.eval_data_list.append(evaluation_data)
-                    en = time.time()
-
-                    logger.info("Time for fetching the data {} min ".format((en - st) / 60))
-
-
-
-        # NOTE: Task id changes in the loop to cover all trained tasks
-        scores = {k:"" for k in self.ROI_order }
-        scores_list_to_return = list()
-        for task_id, task_query in enumerate(tasks_to_evaluate):
-            # get the respective task data
-            # if task_query.tasks[0] != "oesophagus":
-            #     continue
-            if self.args.extract_shared:
-                if task_id !=0 :
-                    continue
-                    # skipping all tasks, evaluating only for spinal cord
-            self.original_label = self.organ_label_mapping(task_query.tasks[0]) #if self.args.dataset == 'AAPM' else 1
-
-            logger.info("========> Task ID {} organ {} <========".format(task_id, task_query.tasks[0]))
-
-
-        # Create dataloaders
-            evaluation_data = self.eval_data_list[task_id]
-            eval_data_loader = torch.utils.data.DataLoader(evaluation_data, batch_size=self.batch_size,
-                                                                 shuffle=False, drop_last=True,
-                                                                 num_workers=self.args.workers)
-
-            logger.info("Len of eval dataloader {}, batch size {}".format(len(eval_data_loader), self.batch_size))
-            logger.info("*"*80)
-            logger.info("Start evaluating model {} on task {}".format(self.organ, task_query.tasks))
-            logger.info("*" * 80)
-            valid_res=self.eval_(eval_data_loader, task_id, phase="val", vis_organ=self.organ) # vis_organ for shared extract
-            utils.report_val(valid_res, self.checkpoint)
-            logger.info(" \n")
-            scores[task_query.tasks[0]] = valid_res['dice']
-            scores_list_to_return.append(valid_res['dice'][0])
-        # save organ eval to file
-        # print(scores)
-        scores_df = pd.DataFrame.from_dict(scores)
-        file_name = os.path.join(os.path.join(self.checkpoint, 'scores'),
-                                 "{}_model_all_organs_avg_{}.csv".format(self.organ, self.args.eval_split))
-        scores_df.T.to_csv(file_name)
-        return scores_list_to_return
-
-    def vis_segmentation(self, task_id):
-        """
-        """
-        self.task_id = task_id
-        tasks_to_evaluate = self.tasks[:task_id+1]
-
-        self.organ = self.tasks[task_id].tasks[0]
-        model_file = os.path.join(self.checkpoint, 'model_{}.pth.tar'.format(self.organ))
-        if not os.path.exists(model_file):
-            raise ValueError("No model found for {}".format(self.organ))
-
-        if not self.organ in ['oesophagus']: #oesophagus
-            logger.info("skipping evaluation for {}".format(self.organ))
-            return
-
-        # Fetch all data first then evaluate all models
-        if len(self.eval_data_list) == 0:  # to avoid doing it every time
-            for task_id, task_query in enumerate(self.tasks):  # fetching for all data regardless
-                # if task_query.tasks[0] != "oesophagus":
-                #     continue
-                logger.info("========> Fetching data for organ {}".format(task_query.tasks[0]))
-                st = time.time()
-                if self.args.eval_split == "val":
-                    evaluation_data = self.get_validation_data(data_query=task_query,
-                                                               debug_mode=self.args.debug_mode,
-                                                               options=self.args)
-                else:
-                    evaluation_data = self.get_test_data(data_query=task_query,
-                                                         debug_mode=self.args.debug_mode,
-                                                         options=self.args)
-
-                self.eval_data_list.append(evaluation_data)
-                en = time.time()
-
-                logger.info("Time for fetching the data {} min ".format((en - st) / 60))
-
-        self.model = self.load_checkpoint(self.organ)
+        self.model = self.load_checkpoint()
         self.model.eval()
 
-        # NOTE: Task id changes in the loop to cover all trained tasks
+        st=time.time()
+        task_query = self.tasks[0]  # one query containing 5 organs
+        if self.args.eval_split == "val":
+            evaluation_data = self.get_validation_data(data_query=task_query,
+                                                       debug_mode=self.args.debug_mode,
+                                                       options=self.args)
+        else:
+            evaluation_data = self.get_test_data(data_query=task_query,
+                                                       debug_mode=self.args.debug_mode,
+                                                       options=self.args)
 
-        for task_id, task_query in enumerate(tasks_to_evaluate):
+                # evaluation_data = self.get_training_data(data_query=task_query,
+                #                                      debug_mode=self.args.debug_mode,
+                #                                      options=self.args)
+        en = time.time()
 
-            self.original_label = self.organ_label_mapping(task_query.tasks[0]) # if self.args.dataset == 'AAPM' else 1
+        logger.info("Time for fetching the data {} min ".format((en-st)/60))
+    # Create dataloaders
 
-            logger.info("========> Task ID {} organ {} <========".format(task_id, task_query.tasks[0]))
-
-
-        # Create dataloaders
-            evaluation_data = self.eval_data_list[task_id]
-            eval_data_loader = torch.utils.data.DataLoader(evaluation_data, batch_size=self.batch_size,
-                                                             shuffle=False, drop_last=False,
+        eval_data_loader = torch.utils.data.DataLoader(evaluation_data, batch_size=self.batch_size,
+                                                             shuffle=False, drop_last=True,
                                                              num_workers=self.args.workers)
 
-            logger.info("Len of eval dataloader {}, batch size {}".format(len(eval_data_loader), self.batch_size))
-            logger.info("*"*80)
-            logger.info("Start evaluating model {} on task {}".format(self.organ, task_query.tasks))
-            logger.info("*" * 80)
-            valid_res=self.eval_(eval_data_loader, task_id, phase="val", vis_organ=task_query.tasks[0])
-            utils.report_val(valid_res, self.checkpoint)
-            logger.info(" \n")
-
-
-        # print(len(self.input_slices_list), len(self.true_label_list), len(self.pred_label_list))
-        # print("shape of one item {}".format(self.input_slices_list[0].shape))
-        for task_id, task_query in enumerate(tasks_to_evaluate):
-            x = self.input_slices_list[task_id]
-            # sum labels from the current organ and all the prev
-            y = np.stack([self.true_label_list[i] for i in range(task_id+1)]).sum(axis=0)
-            y_pred = np.stack([self.pred_label_list[i] for i in range(task_id+1)]).sum(axis=0)
-            organ = task_query.tasks[0]
-            print("############# Visualizing model {} #############".format(organ))
-            for iter in range(x.shape[0]//self.args.batch_size):
-                x_plot = x[self.args.batch_size*iter: self.args.batch_size*(iter+1), ...]
-                y_plot = y[self.args.batch_size * iter: self.args.batch_size * (iter + 1), ...]
-                y_pred_plot = y_pred[self.args.batch_size * iter: self.args.batch_size * (iter + 1), ...]
-                utils.visualize_seg_sequentially(x_plot, y_plot, y_pred_plot, organ, self.checkpoint, iter)
-
-            # self.input_slices_list
-
-        return True
-
-
+        logger.info("Len of validation dataloader {}, batch size {}".format(len(eval_data_loader), self.batch_size))
+        logger.info("*"*80)
+        valid_res=self.eval_(eval_data_loader)
+        utils.report_val(valid_res, self.checkpoint)
+        logger.info(" \n")
+        # save organ eval to file
+        # print(scores)
+        # scores_df = pd.DataFrame.from_dict(scores)
+        # file_name = os.path.join(os.path.join(self.checkpoint, 'scores'),
+        #                          "{}_model_all_organs_avg_{}.csv".format(self.organ, self.args.eval_split))
+        # scores_df.T.to_csv(file_name)
 
     def eval_all_per_vol(self, task_id):
         """
@@ -816,7 +570,7 @@ class ACL(object):
         if not os.path.exists(model_file):
             raise ValueError("No model found for {}".format(self.organ))
 
-        if not self.organ in ['oesophagusv']:
+        if not self.organ in ['oesophagus']:
             logger.info("skipping evaluation for {}".format(self.organ))
             return
         self.model = self.load_checkpoint(self.organ)
@@ -858,7 +612,7 @@ class ACL(object):
 
                 # logger.info("Len of validation dataloader {}, batch size {}".format(len(validation_data_loader), self.batch_size))
                 valid_res=self.eval_(validation_data_loader, task_id, phase="val",
-                                     vis_organ=task_query.tasks[0])
+                                     vis_organ=task_query.tasks[0], vis_flag=self.args.vis_flag)
                 utils.report_val(valid_res, self.checkpoint)
                 logger.info(" \n")
 
@@ -872,63 +626,22 @@ class ACL(object):
             scores_df.T.to_csv(file_name)
             # print(scores_df.T)
 
-    def test(self, data_loader, task_id, model):
-        loss_a, loss_t, loss_d, loss_total=0, 0, 0, 0
-        correct_d, correct_t=0, 0
-        num=0
-        batch=0
+    def make_one_hot(self, tensor, num_classes=7): # 7 structseg
+        bs, _, h, w = tensor.size()
+        tensor = tensor.type(torch.LongTensor)
+        y_true_one_hot = torch.FloatTensor(bs, num_classes, h, w).zero_()
+        y_true_one_hot = y_true_one_hot.scatter_(1, tensor, 1.0)
 
-        model.eval()
-        self.discriminator.eval()
-
-        res={}
-        with torch.no_grad():
-            for batch, (data, target, tt, td) in enumerate(data_loader):
-                x=data.to(device=self.device)
-                y=target.to(device=self.device, dtype=torch.long)
-                tt=tt.to(device=self.device)
-                t_real_D=td.to(self.device)
-
-                # Forward
-                output=model.forward(x, x, tt, task_id)
-                shared_out, task_out=model.get_encoded_ftrs(x, x, task_id)
-
-                _, pred=output.max(1)
-                correct_t+=pred.eq(y.view_as(pred)).sum().item()
-
-                # Discriminator's performance:
-                output_d=self.discriminator.forward(shared_out, tt, task_id)
-                _, pred_d=output_d.max(1)
-                correct_d+=pred_d.eq(t_real_D.view_as(pred_d)).sum().item()
-
-                if self.diff == 'yes':
-                    diff_loss=self.diff_loss(shared_out, task_out)
-                else:
-                    diff_loss=torch.tensor(0).to(device=self.device, dtype=torch.float32)
-                    self.diff_loss_reg=0
-
-                # Loss values
-                adv_loss=self.adversarial_loss_d(output_d, t_real_D)
-                task_loss=self.task_loss(output, y)
-
-                total_loss=task_loss + self.adv_loss_reg * adv_loss + self.diff_loss_reg * diff_loss
-
-                loss_t+=task_loss
-                loss_a+=adv_loss
-                loss_d+=diff_loss
-                loss_total+=total_loss
-
-                num+=x.size(0)
-
-        res['loss_t'], res['dice']=loss_t.item() / (batch + 1), 100 * correct_t / num
-        res['loss_a'], res['acc_d']=loss_a.item() / (batch + 1), 100 * correct_d / num
-        res['loss_d']=loss_d.item() / (batch + 1)
-        res['loss_tot']=loss_total.item() / (batch + 1)
-        res['size']=self.loader_size(data_loader)
-
-        return res
+        return y_true_one_hot
 
     def compute_dice_score(self, pred, target, smooth=1e-6):
+        '''
+            pred : Bxn_headsxwxh
+            target: Bx1xwxh
+        '''
+        # convert target to one hot
+        target = self.make_one_hot(target)
+        target = target[:, 1:, :, :] # to skip the background
         assert pred.size() == target.size()
         output = pred.to(self.device)
         target = target.to(self.device)
@@ -944,7 +657,7 @@ class ACL(object):
         # print(intersection, union)
         dsc = (2. * intersection + smooth) / ( union + smooth)
         dsc = dsc.detach()
-        return dsc.mean(dim=0).item()
+        return dsc.mean(dim=0).cpu().numpy()
     # def compute_dice_score(self, prediction, target) -> float:
     #     """
     #     Computes the Dice coefficient.
@@ -972,40 +685,25 @@ class ACL(object):
     #
     #     return 2.0 * intersection.sum() / (prediction_bool.sum() + target_bool.sum())
 
-    def save_all_models(self, organ):
+    def save_all_models(self):
 
         dis=utils.get_model(self.discriminator)
         torch.save({'model_state_dict': dis,
-                    }, os.path.join(self.checkpoint, 'discriminator_{}.pth.tar'.format(organ)))
+                    }, os.path.join(self.checkpoint, 'discriminator.pth.tar'))
 
         model=utils.get_model(self.model)
         torch.save({'model_state_dict': model,
-                    }, os.path.join(self.checkpoint, 'model_{}.pth.tar'.format(organ)))
+                    }, os.path.join(self.checkpoint, 'model.pth.tar'))
 
-        logger.info("Saved all models for task {} ...".format(organ))
-
-
-    def load_model(self, organ):
-
-        # Load a previous model
-        net=self.network.Net(self.args)
-        checkpoint=torch.load(os.path.join(self.checkpoint, 'model_{}.pth.tar'.format(organ)))
-        net.load_state_dict(checkpoint['model_state_dict'])
-
-        # # Change the previous shared module with the current one
-        current_shared_module=deepcopy(self.model.shared.state_dict())
-        net.shared.load_state_dict(current_shared_module)
-
-        net=net.to(self.args.device)
-        return net
+        logger.info("Saved all models for task...")
 
 
-    def load_checkpoint(self, organ):
-        logger.info("Loading checkpoint for task {} from {} ...".format(organ, self.checkpoint))
+    def load_checkpoint(self):
+        logger.info("Loading checkpoint from {}".format(self.checkpoint))
 
         # Load a previous model
         net=self.network.Net(self.args, tasks=self.tasks)
-        checkpoint=torch.load(os.path.join(self.checkpoint, 'model_{}.pth.tar'.format(organ)))
+        checkpoint=torch.load(os.path.join(self.checkpoint, 'model.pth.tar'))
         net.load_state_dict(checkpoint['model_state_dict'], strict=False)
         net=net.to(self.args.device)
         return net
@@ -1142,21 +840,40 @@ class ACL(object):
     #     iterate = K.function([model.input], [loss, grads])
 
         #
-class DiffLoss(torch.nn.Module):
+class JointDiffLoss(torch.nn.Module):
     # From: Domain Separation Networks (https://arxiv.org/abs/1608.06019)
     # Konstantinos Bousmalis, George Trigeorgis, Nathan Silberman, Dilip Krishnan, Dumitru Erhan
 
     def __init__(self):
-        super(DiffLoss, self).__init__()
+        super(JointDiffLoss, self).__init__()
 
-    def forward(self, D1, D2):
-        D1=D1.view(D1.size(0), -1)
-        D1_norm=torch.norm(D1, p=2, dim=1, keepdim=True).detach()
-        D1_norm=D1.div(D1_norm.expand_as(D1) + 1e-6)
+    def forward(self, shared_embedding, stacked_pvt_embeddings):
+        shared_embedding=shared_embedding.view(shared_embedding.size(0), -1)
+        shared_embedding_norm=torch.norm(shared_embedding, p=2, dim=1, keepdim=True).detach()
+        shared_embedding_norm=shared_embedding.div(shared_embedding_norm.expand_as(shared_embedding) + 1e-6)
 
-        D2=D2.view(D2.size(0), -1)
-        D2_norm=torch.norm(D2, p=2, dim=1, keepdim=True).detach()
-        D2_norm=D2.div(D2_norm.expand_as(D2) + 1e-6)
-
+        diff_loss = 0
+        for pvt_embedding in stacked_pvt_embeddings:
+            pvt_embedding=pvt_embedding.view(pvt_embedding.size(0), -1)
+            pvt_embedding_norm=torch.norm(pvt_embedding, p=2, dim=1, keepdim=True).detach()
+            pvt_embedding_norm=pvt_embedding.div(pvt_embedding_norm.expand_as(pvt_embedding) + 1e-6)
+            diff_loss += torch.mean((shared_embedding_norm.mm(pvt_embedding_norm.t()).pow(2)))
         # return torch.mean((D1_norm.mm(D2_norm.t()).pow(2)))
-        return torch.mean((D1_norm.mm(D2_norm.t()).pow(2)))
+        return diff_loss
+
+
+class JointBceLoss(torch.nn.Module):
+    def __init__(self):
+        super(JointBceLoss, self).__init__()
+
+        self.device = torch.device("cpu" if not torch.cuda.is_available() else 'cuda')
+        self.criterion = torch.nn.BCEWithLogitsLoss()
+
+    def forward(self, y_pred, y_true, loss_weights):
+        loss = 0
+        for i in range(6):
+            true_label = y_true == i+1  # no background head or whatsoever
+
+            one_loss = self.criterion(y_pred[:,i,:,:].squeeze(), true_label.type(torch.FloatTensor).squeeze().to(self.device))
+            loss += one_loss #* loss_weights[i]
+        return loss

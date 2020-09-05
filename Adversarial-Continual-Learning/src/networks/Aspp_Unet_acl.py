@@ -159,7 +159,8 @@ class Net(torch.nn.Module):
     def __init__(self, args=None, tasks=None):
         super(Net, self).__init__()
         # tasks is a list of data queries, tasks[0] to access the organ in the query
-        self.organs = [task.tasks[0] for task in tasks]
+        self.organs = tasks[0].tasks  #[task.tasks[0] for task in tasks] if not args.joint else tasks[0].tasks  # else for joint training
+        # print("organs in net", self.organs)
         self.args = args
         # print(self.organs)
         self.num_tasks = len(self.organs)
@@ -174,28 +175,40 @@ class Net(torch.nn.Module):
             self.private.append(PrivateModule(organ=organ, init_features=nf, args=self.args))
             self.head.append(TaskHead(organ=organ))
 
-    def forward(self, x_s, x_p, tt, task_id):
+    def forward(self, x_s, x_p):
 
         x_s = x_s.view_as(x_s)
         x_p = x_p.view_as(x_p)
 
         x_shared = self.shared(x_s)
 
-        x_prvt = self.private[task_id](x_p)
-        # logger.info("both full val")
-        concat_frts = torch.cat([x_prvt, x_shared], dim=1)
-        # logger.info("shared only")
-        # concat_frts = torch.cat([x_shared, x_shared], dim=1)  # to test the effect for removing private module
-        # logger.info("pvt only")
-        # concat_frts = torch.cat([x_prvt, x_prvt], dim=1)
-        x_head = self.head[task_id](concat_frts)
+        pvt_mods_out = []
+        task_heads_out = []
 
-        return x_head
+        for pvt_mod, task_head in zip(self.private, self.head):
+            x_prvt = pvt_mod(x_p)
+            concat_frts = torch.cat([x_prvt, x_shared], dim=1)
+            # concat_frts = torch.cat([x_shared, x_shared], dim=1)
+            # print("shared only")
+            # concat_frts = torch.cat([x_prvt, x_prvt], dim=1)
+            # print("private only")
+            x_head = task_head(concat_frts)
+            pvt_mods_out.append(x_prvt)
+            task_heads_out.append(x_head)
+
+        # # This should contain channels = number of heads
+        # pvt_stacked_out = torch.stack(pvt_mods_out)
+        # pvt_stacked_out = pvt_stacked_out.squeeze() # n_heads x bs x latent_dim
+
+        final_stacked_out = torch.stack(task_heads_out)  # [n_heads, bs, 1, h,w]
+        final_stacked_out = final_stacked_out.squeeze(2).permute(1, 0, 2, 3)  # [bs, n_heads, h, w]
+
+        return final_stacked_out, x_shared, pvt_mods_out
 
 
-    def get_encoded_ftrs(self, x_s, x_p, task_id):
-
-        return self.shared(x_s), self.private[task_id](x_p)
+    # def get_encoded_ftrs(self, x_s, x_p, task_id):
+    #
+    #     return self.shared(x_s), self.private[task_id](x_p)
 
     def print_model_size(self):
         count_P = sum(p.numel() for p in self.private.parameters() if p.requires_grad)

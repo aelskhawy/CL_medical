@@ -6,9 +6,9 @@
 
 ################ Frequently changed options ######################
 #name: "half_sized_model_same_score"
-name:  "structseg_orderC" #   "aapm_sp_rl_ll_heart_eso" #"all_6_ltrc_options" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #""
+name:  "structseg_ideal" #   "aapm_sp_rl_ll_heart_eso" #"all_6_ltrc_options" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #""
 message: ""
-nepochs: 50
+nepochs: 100
 dataset:  structseg #AAPM # structseg # , LTRC, structseg
 #continue_train: True  # to continue training an existing model
 #debug_mode: True
@@ -43,6 +43,7 @@ e_lr: 0.01  #0.01 #3.3e-4 #0.001 # 0.001  TODO: 0.001 for AAPM, 0.0001 for LTRC
 lr_patience: 10 # TODO: this was 10
 
 latent_dim: 256
+replay_mode: "ideal"
 
 # Data augmentation
 #aug_scale: 0.05
@@ -87,7 +88,6 @@ pc_valid: 0.15
 
 workers: 0
 device: "cuda:0"
-replay_mode: ""
 
 # Transformer options
 load_size: 256
