@@ -15,10 +15,10 @@ def data_root_structSeg():
     return Path("/data/structseg_preprocessed")  #polyaxon
 
 def all_organs() -> List[str]:
-    # return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
+    return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]  # original order in the dataset
     # return ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus', 'trachea']  # orderA
     # return ['oesophagus', 'heart', 'l_lung', 'r_lung', 'spinal_cord', 'trachea'] # OrderB
-    return [ 'l_lung', 'r_lung', 'spinal_cord',  'heart', 'oesophagus', 'trachea' ]  # OrderC
+    # return [ 'l_lung', 'r_lung', 'spinal_cord',  'heart', 'oesophagus', 'trachea' ]  # OrderC
 
     # return ["l_lung",] # 'r_lung']
     # return ["spinal_cord"]

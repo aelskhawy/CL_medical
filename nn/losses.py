@@ -102,7 +102,7 @@ class ClLoss(nn.Module):
                 active_classes = active_classes[-1]
 
         else:
-            active_classes = list(np.arange(len(AAPM.all_organs())+1)) # this will fail if the task order has changed
+            active_classes = list(np.arange(7))  # 7 for structseg, 6 for aapm
 
         loss_weights = torch.tensor(loss_weights, dtype=torch.float, requires_grad=True).to(self.device)
         if not isinstance(active_classes, list):
@@ -115,7 +115,7 @@ class ClLoss(nn.Module):
             # i need only the last head for bce in case of LwF, otherwise i'll computer over all
             # the heads if offline or task 1
             if len(active_classes) == 1:
-                # Not task 1 or offline, take the last head
+                # Not task 1 nor offline, take the last head
                 head_idx = -1
             else:
                 head_idx = i

@@ -1,5 +1,5 @@
 dataset:  "structseg" #"AAPM"
-num_classes: 7
+num_classes: 7  # change here according to the dataset. 6 for AAPM, 7 for structseg
 #data_root_aapm: /home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/Training
 #data_root_aapm: /ADP_ContinualLearning/data/MultiOrgan/preprocessed # DGX
 verbose: False
@@ -12,14 +12,14 @@ weight_decay: 0
 #output_predictions: True
 
 ## Frequently changed
-num_epochs: 80
+num_epochs: 100
 batch_size: 16 #16
 lr: 0.001
 #debug_mode: True  # turn this off after u r done debuggin, it affects the size of the dataset
-replay_mode:  LwF # ideal #
+replay_mode: ideal # LwF
 
-name: "structseg_orderC/" #"orderA_1dot2_bce_local" #   #"orderC_run2"  # "just_testing"
-message: "lwf for structseg 1st trial" #"kd factor 0.01, bce factor 1 training orderA, run1"   #"kd factor 0.01, bce factor 1"
+name: "structseg_ideal/" #"orderA_1dot2_bce_local" #   #"orderC_run2"  # "just_testing"
+message: "structseg ideal" #"kd factor 0.01, bce factor 1 training orderA, run1"   #"kd factor 0.01, bce factor 1"
 run_training: True
 #run_evaluation: True
 

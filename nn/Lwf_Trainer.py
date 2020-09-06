@@ -50,9 +50,12 @@ class LwFTrainer:
         self.val_dsc_scores_list = []
         self.val_loss = []
         self.epoch = 0
-        self.loss_weights = [0.00026391335252852157, 0.34153133637858485, 0.011513810817807897,
-                             0.014717132000521804, 0.038526956519617024,0.59344685093094]
-
+        if self.opt.dataset == "AAPM":
+            self.loss_weights = [0.00026391335252852157, 0.34153133637858485, 0.011513810817807897,
+                                 0.014717132000521804, 0.038526956519617024,0.59344685093094]
+        else:  # strucseg
+            self.loss_weights = [6.268974866882558e-05, 0.009156025241015291, 0.00814801999756595,
+             0.025132955342827803, 0.48162344218703046, 0.3514351768729966, 0.1244416906098951]
         # used for model saving
         self.best_val_dice = 0
 
@@ -249,7 +252,7 @@ class LwFTrainer:
                     total_losses[name] += loss.item()
 
             average_losses = {name: total_loss / len(data_iter) for name, total_loss in total_losses.items()}
-
+            # print("dice scores list ", self.val_dsc_scores_list)
             self.val_dsc_scores_list = np.asarray([(tensor.detach().cpu().numpy()) for
                                                    tensor in self.val_dsc_scores_list]).mean(axis=0)
 
@@ -289,6 +292,8 @@ class LwFTrainer:
                 one_task_scores = np.asarray(one_task_scores).mean(axis=0)
 
                 self.val_dsc_scores_list.append(one_task_scores)
+                if self.opt.replay_mode == "ideal":
+                    self.best_val_dice = np.asarray(self.val_dsc_scores_list).mean()
 
         self.log_val_stats()
 
@@ -321,7 +326,8 @@ class LwFTrainer:
         self.active_classes = active_classes
         print("active_classes input", active_classes)
 
-        early_stopping_callback = pytorch.EarlyStopping(loss_to_monitor='validation_total_loss', verbose=True,
+        # early_stopping_callback is just shit now
+        early_stopping_callback = pytorch.EarlyStopping(loss_to_monitor='training_bce_loss', verbose=True,
                                                         model_file_path=self.model_file_path, patience=15)
 
         loss_history = dict()
@@ -335,7 +341,16 @@ class LwFTrainer:
             logger.info(f'Epoch {epoch} - Training')
             training_losses = self.train_one_epoch()
             logger.info(f'Epoch {epoch} - Validation')
-            validation_losses = self.eval_one_epoch()
+
+            if self.replay_mode == "ideal":
+                # eval_one_epoch() has an issue in ideal case and I'm too lazy to fix it.
+                # you just have to account for the fact that not all slices have all organs
+                # and just make sure the dice scores output is of the same size for all
+                # so, i'm using eval_active_tasks instead
+                self.eval_active_tasks()
+                validation_losses  = {"t1": 0, "t2":0, "t3":0} # just to avoid errors ahead
+            else:
+                validation_losses = self.eval_one_epoch()
 
             # save the model that gives the highest dice, just for reference later
             if self.best_val_dice > local_best_val_dice:

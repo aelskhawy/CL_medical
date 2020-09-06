@@ -144,7 +144,7 @@ class LwFMultiHead(CLModel):
             active_tasks_idx = [self.roi_order.index(task) for task in model.task_list]
         else:
             # ideal case
-            active_tasks_idx = [0]
+            active_tasks_idx = [self.roi_order.index(task) for task in model.task_list]
 
         # self.active_classes = active_tasks_idx
         prev_model = self.previous_model()

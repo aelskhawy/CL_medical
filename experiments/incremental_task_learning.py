@@ -46,8 +46,9 @@ def continual_learning_model(options: Options) -> CLModel:
                               task_list=['background'])
         else:
             #ideal case
+            available_organs = AAPM.all_organs() if options.dataset == "AAPM" else structSeg.all_organs()
             model = UNetMultiHead(in_channels=1, init_features=options.nfc,
-                                  task_list= ['background'] + AAPM.all_organs())
+                                  task_list= ['background'] + available_organs )
 
         model.print_network()
         cl_model = LwFMultiHead(initial_model=model, options=options)
