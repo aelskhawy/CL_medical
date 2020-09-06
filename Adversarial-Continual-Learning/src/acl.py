@@ -140,7 +140,7 @@ class ACL(object):
 
     def get_test_data(self, data_query: DataQuery, debug_mode: bool = False, options=None) \
             -> Tuple[Dataset, Dataset]:
-        test_data_volumes = get_data(query=data_query, split=Split.FinalEvaluation if self.args.dataset =='AAPM' else Split.DevelopmentTest,
+        test_data_volumes = get_data(query=data_query, split=Split.FinalEvaluation,
                                      debug_mode=debug_mode, options=options)
 
         if options.per_vol_eval:
@@ -453,7 +453,6 @@ class ACL(object):
                 # print(torch.unique(y), torch.unique(target))
                 # Forward
                 output, shared_out, task_out=self.model(x, x)
-
                 # Discriminator's performance:
                 # probably don't need to add sigmoid or softmax because we choose the location of the max output
                 # and in anycase the node that gives the max output will be the same after a sigmoid or softmax
@@ -517,7 +516,9 @@ class ACL(object):
         This function is being called after training is done, to evaluate the current task and all the previous ones
         """
         print("########### EVALUATION#######################")
+
         model_file = os.path.join(self.checkpoint, 'model.pth.tar')
+        print("searching for the model in {}".format(self.checkpoint))
         if not os.path.exists(model_file):
             raise ValueError("No model found for {}".format(self.organ))
 

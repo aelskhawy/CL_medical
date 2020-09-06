@@ -159,7 +159,7 @@ class Net(torch.nn.Module):
     def __init__(self, args=None, tasks=None):
         super(Net, self).__init__()
         # tasks is a list of data queries, tasks[0] to access the organ in the query
-        self.organs = tasks[0].tasks  #[task.tasks[0] for task in tasks] if not args.joint else tasks[0].tasks  # else for joint training
+        self.organs = tasks[0].tasks
         # print("organs in net", self.organs)
         self.args = args
         # print(self.organs)

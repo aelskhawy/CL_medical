@@ -22,8 +22,8 @@ ntasks: 6
 ##### evaluation options
 
 #
-#evaluate_only: True
-#eval_split: test # #test
+evaluate_only: True
+eval_split: test # #test
 #vis_seg: True
 #tsne: "yes"
 #extract_shared: "yes"
