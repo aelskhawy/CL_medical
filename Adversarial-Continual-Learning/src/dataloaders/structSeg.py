@@ -11,15 +11,18 @@ import shutil
 # left lung 1, right lung 2, heart 3, oesophagus 4?, trachea 5, spinal_cord 6
 
 def data_root_structSeg():
-    # return Path("/home/skhawy/thesis/structseg")
-    return Path("/data/structseg_preprocessed")  #polyaxon
+    return Path("/home/skhawy/thesis/structseg")
+    # return Path("/data/structseg_preprocessed")  #polyaxon
 
 def all_organs() -> List[str]:
     # return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
-    # return ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus', 'trachea']  # orderA
+    return ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus', 'trachea']  # orderA
     # return ['oesophagus', 'heart', 'l_lung', 'r_lung', 'spinal_cord', 'trachea'] # OrderB
-    return [ 'l_lung', 'r_lung', 'spinal_cord',  'heart', 'oesophagus', 'trachea' ]  # OrderC
-
+    # return [ 'l_lung', 'r_lung', 'spinal_cord',  'heart', 'oesophagus', 'trachea' ]  # OrderC
+    # return ['heart']
+    # return ['oesophagus']
+    # return ['trachea']
+    # return ['r_lung']
     # return ["l_lung",] # 'r_lung']
     # return ["spinal_cord"]
 

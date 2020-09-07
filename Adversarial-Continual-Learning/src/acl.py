@@ -23,6 +23,7 @@ from networks.discriminator import Discriminator
 from dataloaders.all_data import get_data, DataQuery, Split
 from typing import List, Union, Dict, Tuple
 from torch.utils.data import ConcatDataset, Dataset
+import surface_distance as surfd
 # from torch.utils.tensorboard import SummaryWriter
 import logging
 logger = logging.getLogger(__name__)
@@ -509,6 +510,7 @@ class ACL(object):
 
         res={}
         dice_scores=[[], []]  # list of scores, one corresponding to each threshold
+        surf_distance_scores = []
         iter = 0
         inputs, true_labels, pred_labels = [], [], []  # remember to drop last batch if it is not of the same size
         task_shared_features = []
@@ -559,10 +561,23 @@ class ACL(object):
                     final_pred = final_pred.to(self.device)
                     # print("tensor on gpu")
                     dice_score = self.compute_dice_score(final_pred, y)
+
                     if self.args.vis_seg and t == 0.5:
                         print("dice score of slice {} is {}".format(batch, dice_score))
                     dice_scores[i].append(dice_score) # .item()
-                # logger.info("dice score of slice {} is {}".format(batch, dice_scores))
+
+                if self.args.calc_surfd:
+                    final_pred = (output >= t) #.type(torch.FloatTensor).to(self.device)
+
+                    for i in range(y.size()[0]): # loop through the batch
+                        surface_distances = surfd.compute_surface_distances(y[i].squeeze().detach().cpu().numpy().astype(bool),
+                                                                            final_pred[i].squeeze().detach().cpu().numpy().astype(bool),
+                                                                            [1,1])
+                        # average_surf_d is 1 tuple of 2 numbers, surfd from gt to pred and vice versa
+                        average_surf_d = surfd.compute_average_surface_distance(surface_distances)
+                        surf_distance_scores.append(list(average_surf_d))
+
+                    # logger.info("dice score of slice {} is {}".format(batch, dice_scores))
                 num += x.size(0)
 
                 loss_t+=task_loss
@@ -610,12 +625,13 @@ class ACL(object):
 
         # should return a list of 2 numbers, representing the score for 2 thresholds
         dice_scores_to_report =  [np.asarray(scores).mean() for scores in dice_scores] #np.asarray(dice_scores).mean() #
-
+        surf_dist_to_report = np.asarray(surf_distance_scores).mean(axis=0) if self.args.calc_surfd else [0,0]
         res['loss_t'], res['dice']=loss_t.item() / (batch + 1), dice_scores_to_report #np.inf #100 * correct_t / num
         res['loss_a'], res['acc_d']=loss_a.item() / (batch + 1), 100 * correct_d / num
         res['loss_d']=loss_d.item() / (batch + 1)
         res['loss_tot']=loss_total.item() / (batch + 1)
         res['size']=self.loader_size(data_loader)
+        res['surfd']  = surf_dist_to_report
 
         return res
 
@@ -684,7 +700,8 @@ class ACL(object):
 
         # NOTE: Task id changes in the loop to cover all trained tasks
         scores = {k:"" for k in self.ROI_order }
-        scores_list_to_return = list()
+        surf_dist_scores = {k:"" for k in self.ROI_order}
+        scores_list_to_return, surf_dist_to_return = list(), list()
         for task_id, task_query in enumerate(tasks_to_evaluate):
             # get the respective task data
             # if task_query.tasks[0] != "oesophagus":
@@ -713,13 +730,15 @@ class ACL(object):
             logger.info(" \n")
             scores[task_query.tasks[0]] = valid_res['dice']
             scores_list_to_return.append(valid_res['dice'][0])
+            surf_dist_scores[task_query.tasks[0]] = valid_res['surfd']
+            surf_dist_to_return.append(valid_res['surfd'][1]) # i chose to return only the distance from pred to gt
         # save organ eval to file
         # print(scores)
         scores_df = pd.DataFrame.from_dict(scores)
         file_name = os.path.join(os.path.join(self.checkpoint, 'scores'),
                                  "{}_model_all_organs_avg_{}.csv".format(self.organ, self.args.eval_split))
         scores_df.T.to_csv(file_name)
-        return scores_list_to_return
+        return scores_list_to_return, surf_dist_to_return
 
     def vis_segmentation(self, task_id):
         """

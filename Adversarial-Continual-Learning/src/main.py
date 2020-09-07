@@ -86,7 +86,7 @@ def run(args, run_id):
     # Loop tasks
     acc=np.zeros((len(tasks),len(tasks)),dtype=np.float32)
     lss=np.zeros((len(tasks),len(tasks)),dtype=np.float32)
-    accumalted_scores = list()
+    accumalted_scores, accum_surfd_scores = list(), list()
     # exit()
     for task_id in range(len(tasks)):
 
@@ -103,8 +103,9 @@ def run(args, run_id):
             if args.per_vol_eval:
                 appr.eval_all_per_vol(task_id)
             else:
-                model_score = appr.eval_all(task_id)
+                model_score, surfd_score = appr.eval_all(task_id)
                 accumalted_scores.append(model_score)
+                accum_surfd_scores.append(surfd_score)
             continue
         else:
             # Train
@@ -113,6 +114,7 @@ def run(args, run_id):
         print()
 
     logger.info("accumlated scores {} ".format(accumalted_scores))
+    logger.info("accumlated  surfd scores {} ".format(accum_surfd_scores))
 
     # compute the Omega scores
     if args.evaluate_only:

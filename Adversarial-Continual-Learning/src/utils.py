@@ -28,12 +28,13 @@ def human_format(num):
 
 def report_tr(res, e, sbatch, clock0, clock1, path):
     # Training performance
-    message ='| Epoch {:3d}, | Train losses={:.3f} | Task: loss={:.3f}, dice={} | ' \
+    message ='| Epoch {:3d}, | Train losses={:.3f} | Task: loss={:.3f}, dice={}, surfd={}, | ' \
              'Disc: loss={:.3f}, acc={:5.1f}%,' \
              ' ''Diff loss:{:.3f} |'.format(e + 1,
                                             res['loss_tot'],
                                             res['loss_t'],
                                             res['dice'],
+                                            res['surfd'],
                                             res['loss_a'],
                                             res['acc_d'],
                                             res['loss_d'])
@@ -43,11 +44,12 @@ def report_tr(res, e, sbatch, clock0, clock1, path):
 
 def report_val(res, path):
     # Validation performance
-    message = ' Valid losses={:.3f} | Task: loss={:.6f}, dice={}, | ' \
+    message = ' Valid losses={:.3f} | Task: loss={:.6f}, dice={}, surfd={} | ' \
               'Disc: loss={:.3f}, acc={:5.2f}%,' \
               ' Diff loss={:.3f} |'.format(res['loss_tot'],
                                            res['loss_t'],
                                            res['dice'],
+                                           res['surfd'],
                                            res['loss_a'],
                                            res['acc_d'],
                                            res['loss_d'])
