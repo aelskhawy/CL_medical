@@ -44,7 +44,7 @@ class ClLoss(nn.Module):
         self.smooth = 1.0
         self.device = torch.device("cpu" if not torch.cuda.is_available() else 'cuda')
         self.bce_criterion = nn.BCEWithLogitsLoss()
-        self.kd_damping_factor = 0.01
+        self.kd_damping_factor = 1 #0.1
         self.bce_factor = 1
         print("kd damping {} , bce factor {}".format(self.kd_damping_factor, self.bce_factor))
 

@@ -14,12 +14,12 @@ weight_decay: 0
 ## Frequently changed
 num_epochs: 80
 batch_size: 16 #16
-lr: 0.001
+lr: 0.01
 #debug_mode: True  # turn this off after u r done debuggin, it affects the size of the dataset
 replay_mode:  LwF # ideal #
 
-name: "structseg_orderC/" #"orderA_1dot2_bce_local" #   #"orderC_run2"  # "just_testing"
-message: "lwf for structseg 1st trial" #"kd factor 0.01, bce factor 1 training orderA, run1"   #"kd factor 0.01, bce factor 1"
+name: "structseg_no_kd_damp_lr_0.01/" #"orderA_1dot2_bce_local" #   #"orderC_run2"  # "just_testing"
+message: "kd factor 1, bce factor 1" #"kd factor 0.01, bce factor 1 training orderA, run1"   #"kd factor 0.01, bce factor 1"
 run_training: True
 #run_evaluation: True
 

@@ -24,17 +24,18 @@ class CLExperiment:
     def __init__(self, cl_model: CLModel, tasks: List[DataQuery], output_folder: Path, options: Options=None):
         self.cl_model = cl_model
         self.tasks = tasks
+        self.polyaxon_out_folder = output_folder
         # Make relative so that when we save it, the experiment can be reloaded from a different location
-        relative_output_folder = output_folder.relative_to(paths.project_root())
-        self._output_folder = PurePath(str(relative_output_folder))
+        # relative_output_folder = output_folder.relative_to(paths.project_root())
+        # self._output_folder = PurePath(str(relative_output_folder))
         self.output_folder.mkdir(parents=True, exist_ok=True)
         self.options = options
         self.verify_tasks()
 
     @property
     def output_folder(self):
-        return paths.project_root() / Path(self._output_folder)
-
+        # return paths.project_root() / Path(self._output_folder)
+        return Path(self.polyaxon_out_folder)
     @property
     def file_path(self):
         return self.output_folder / self.file_name()

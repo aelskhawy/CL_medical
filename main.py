@@ -5,7 +5,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 import numpy as np
-
+import os, sys
 np.random.seed(0)
 
 import logging
@@ -22,6 +22,7 @@ from experiments import incremental_task_learning
 from utils import paths
 from utils.logging import configure_logging
 from utils.options import Options
+from pathlib import Path
 
 
 
@@ -62,7 +63,17 @@ def main():
     # if debug_mode:
     #     experiment_name = f'{experiment_name}_debug'
     algorithm_name = str(cl_model)
-    output_folder = paths.output_data_root() / experiment_name / algorithm_name
+
+    ROOT_DIR = os.path.dirname(os.path.abspath(sys.modules['__main__'].__file__))
+    if ROOT_DIR == "/code":
+        from polyaxon_client.tracking import Experiment, get_data_paths, get_outputs_path
+        output_path = get_outputs_path()
+        output_folder = Path(output_path) / experiment_name / algorithm_name
+
+    else:
+        output_folder = paths.output_data_root() / experiment_name / algorithm_name
+
+    print(">>>>>>>>>>>Output folder is {}".format(output_folder))
 
     if run_training:
         experiment = CLExperiment(cl_model=cl_model, tasks=tasks, output_folder=output_folder, options=options)

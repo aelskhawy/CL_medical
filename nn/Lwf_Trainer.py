@@ -383,14 +383,14 @@ class LwFTrainer:
     def save_best_val_dice(self, model, epoch):
         '''Saves model when validation loss decrease.'''
         self.model_file_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model, str(self.model_file_path) + "_{}_best_dice".format(epoch))
-        torch.save(model.state_dict(), str(self.model_file_path) + "_{}_best_dice.state_dict".format(epoch))
+        torch.save(model, str(self.model_file_path) + "_best_dice")
+        torch.save(model.state_dict(), str(self.model_file_path) + "_best_dice.state_dict")
 
-    def save_each_epoch(self, model, epoch):
-        '''Saves model when validation loss decrease.'''
-        self.model_file_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model, str(self.model_file_path)+"_{}".format(epoch))
-        torch.save(model.state_dict(), str(self.model_file_path)+"_{}.state_dict".format(epoch))
+    # def save_each_epoch(self, model, epoch):
+    #     '''Saves model when validation loss decrease.'''
+    #     self.model_file_path.parent.mkdir(parents=True, exist_ok=True)
+    #     torch.save(model, str(self.model_file_path)+"_{}".format(epoch))
+    #     torch.save(model.state_dict(), str(self.model_file_path)+"_{}.state_dict".format(epoch))
 
 
     def get_current_losses(self, errors):
