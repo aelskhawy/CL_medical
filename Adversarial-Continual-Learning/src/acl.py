@@ -36,10 +36,10 @@ class ACL(object):
         self.batch_size = args.batch_size
         self.tasks = tasks
 
-        if self.args.dataset == 'AAPM':
-            self.ROI_order = ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
-        else:
-            self.ROI_order = ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
+        # if self.args.dataset == 'AAPM':
+        self.aapm_ROI_order = ['spinal_cord', 'r_lung', 'l_lung', 'heart', 'oesophagus']
+
+        self.sseg_ROI_order = ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
 
         # optimizer & adaptive lr
         self.e_lr=args.e_lr
@@ -179,7 +179,13 @@ class ACL(object):
 
     def organ_label_mapping(self, organ):
         # returns the corresponding label for a certain organ
-        return self.ROI_order.index(organ) + 1
+        #
+        if "aapm" in organ:
+            organ = organ.replace("_aapm", "")
+            return self.aapm_ROI_order.index(organ) + 1
+        elif "sseg" in organ:
+            organ = organ.replace("_sseg", "")
+            return self.sseg_ROI_order.index(organ) + 1
 
     def train(self, task_id):
 
@@ -219,14 +225,31 @@ class ACL(object):
         patience_d=self.lr_patience
         self.optimizer_D=self.get_D_optimizer(task_id, d_lr)
 
-        e_lr=self.e_lr[task_id]
-        patience=self.lr_patience
-        self.optimizer_S=self.get_S_optimizer(task_id, e_lr)
 
 
         # get the respective task data
         task_query = self.tasks[task_id]
         self.original_label = self.organ_label_mapping(task_query.tasks[0])  #if self.args.dataset == 'AAPM' else 1
+
+        if "aapm" in task_query.tasks[0]:
+            e_lr = 0.001
+            self.adv_loss_reg = 0.05
+            self.diff_loss_reg = 0.3
+            logger.info("changing e_lr to {} and adv_reg to {} and diff reg to {}".format(
+                e_lr, self.adv_loss_reg, self.diff_loss_reg
+            ))
+        else: # struct seg
+            e_lr = 0.01
+            self.adv_loss_reg = 0.03
+            self.diff_loss_reg = 0.6
+            logger.info("changing e_lr to {} and adv_reg to {} and diff reg to {}".format(
+                e_lr, self.adv_loss_reg, self.diff_loss_reg
+            ))
+
+        patience=self.lr_patience
+        self.optimizer_S=self.get_S_optimizer(task_id, e_lr)
+
+
 
         st=time.time()
         training_data = self.get_training_data(data_query=task_query,
@@ -526,6 +549,7 @@ class ACL(object):
                 output=self.model(x, x, tt, task_id)
 
                 shared_out, task_out = self.model.get_encoded_ftrs(x, x, task_id)
+                print("sum shared out {}, sum task out {}".format(shared_out.sum(), task_out.sum()))
                 if self.args.extract_shared:
                     # save the shared representation for the shared module for the task and save it for further processing
                     task_shared_features.append(shared_out)
@@ -699,8 +723,8 @@ class ACL(object):
 
 
         # NOTE: Task id changes in the loop to cover all trained tasks
-        scores = {k:"" for k in self.ROI_order }
-        surf_dist_scores = {k:"" for k in self.ROI_order}
+        scores = {k:"" for k in self.aapm_ROI_order }
+        surf_dist_scores = {k:"" for k in self.aapm_ROI_order}
         scores_list_to_return, surf_dist_to_return = list(), list()
         for task_id, task_query in enumerate(tasks_to_evaluate):
             # get the respective task data
@@ -730,15 +754,15 @@ class ACL(object):
             logger.info(" \n")
             scores[task_query.tasks[0]] = valid_res['dice']
             scores_list_to_return.append(valid_res['dice'][0])
-            surf_dist_scores[task_query.tasks[0]] = valid_res['surfd']
-            surf_dist_to_return.append(valid_res['surfd'][1]) # i chose to return only the distance from pred to gt
+            # surf_dist_scores[task_query.tasks[0]] = valid_res['surfd']
+            # surf_dist_to_return.append(valid_res['surfd'][1]) # i chose to return only the distance from pred to gt
         # save organ eval to file
         # print(scores)
         scores_df = pd.DataFrame.from_dict(scores)
         file_name = os.path.join(os.path.join(self.checkpoint, 'scores'),
                                  "{}_model_all_organs_avg_{}.csv".format(self.organ, self.args.eval_split))
         scores_df.T.to_csv(file_name)
-        return scores_list_to_return, surf_dist_to_return
+        return scores_list_to_return, []
 
     def vis_segmentation(self, task_id):
         """

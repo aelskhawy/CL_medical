@@ -62,11 +62,13 @@ def get_data(query: DataQuery, split: Split, debug_mode: bool = False, options=N
     # print(multi_organ_mix_tasks, query.tasks)
     # if all(task in multi_organ_mix_tasks for task in query.tasks):
     transforms = Transformer(opt=options, subset=str(split))
-    if options.dataset == 'AAPM':
+    if 'aapm' in query.tasks[0]: #if options.dataset == 'AAPM':
+        print("Fetching {} from AAPM".format(query.tasks[0]))
         datasets = AAPM.get_multi_organ_dataset(split=str(split), debug_mode=options.debug_mode,
                                                 requested_organ_list=query.tasks,
                                                 transforms=transforms, opt=options)
     else:  # structseg
+        print("Fetching {} from Structseg".format(query.tasks[0]))
         datasets = structSeg.get_multi_organ_dataset(split=str(split), debug_mode=options.debug_mode,
                                                 requested_organ_list=query.tasks,
                                                 transforms=transforms, opt=options)
@@ -96,4 +98,7 @@ def ltrc_nlst_data_queries() -> List[DataQuery]:
     logger.info("Training Order is {}".format(LTRC_NLST.all_organs()))
     return [DataQuery(tasks=organ) for organ in LTRC_NLST.all_organs()]
 
+def cross_domains_queries()-> List[DataQuery]:
+    logger.info("Training Order is {}".format(structSeg.cross_domain_organs()))
 
+    return [DataQuery(tasks=organ) for organ in structSeg.cross_domain_organs()]

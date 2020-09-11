@@ -12,6 +12,7 @@ from skimage.draw import polygon
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
+from dataloaders.structSeg import cross_domain_organs
 from tqdm import tqdm
 import logging
 logger = logging.getLogger(__name__)
@@ -21,6 +22,15 @@ watermark = 7000 # the white square burned in on slices with annotations
 ignor_datasets = []
 
 
+
+
+def input_data_root() -> Path:
+    # Set the environment variable "ADP_CL_DATA_ROOT" to data location.  Defaults to "<project_repo>/data".
+    # path_root = os.environ.get("ADP_CL_DATA_ROOT", project_root() / 'data')
+    # return Path("/home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/")
+    # return Path("/ADP_ContinualLearning/data/")  # DGX
+    return Path("/home/skhawy/thesis/CL_medical/data")
+    # return Path("/data/AAPM_new/")  #polyaxon
 
 def all_organs() -> List[str]:
     # return ['r_lung'] #, 'oesophagus', 'heart', 'spinal_cord', 'l_lung']
@@ -40,22 +50,16 @@ def project_root() -> Path:
     return Path(__file__).parent.parent
 
 
-def input_data_root() -> Path:
-    # Set the environment variable "ADP_CL_DATA_ROOT" to data location.  Defaults to "<project_repo>/data".
-    # path_root = os.environ.get("ADP_CL_DATA_ROOT", project_root() / 'data')
-    # return Path("/home/abel@local.tmvse.com/skhawy/Canon/Code/ADP_ContinualLearning/data/")
-    # return Path("/ADP_ContinualLearning/data/")  # DGX
-    return Path("/home/skhawy/thesis/CL_medical/data")
 
 def multi_organ_data_root() -> Path:
-    multio_path = input_data_root() / 'MultiOrgan'
+    multio_path = input_data_root()  #/ 'MultiOrgan'
     if not os.path.exists(str(multio_path)):
         os.mkdir(str(multio_path))
     return multio_path
 
 
 def preprocessed_data_root() -> Path:
-    preproces_multio_path = multi_organ_data_root() / 'preprocessed'
+    preproces_multio_path = multi_organ_data_root()  #/ 'preprocessed'
     if not os.path.exists(str(preproces_multio_path)):
         os.mkdir(str(preproces_multio_path))
     return preproces_multio_path
@@ -265,11 +269,15 @@ class AAPMSinglePatient(Dataset):
                  dataset_file_path: Path = None, transform=None, opt=None):
 
         self.args = opt
+        # in case of cross domain training the organ name might come with the dataset name attached
+        self.requested_organ_list = requested_organ_list[0].replace("_aapm", "")
+        # print(self.requested_organ_list, type(self.requested_organ_list))
+        # print("requested organ from aapm is ", self.requested_organ_list)
         # Just making sure its a list
-        if not isinstance(requested_organ_list, list):
-            self.requested_organ_list = [requested_organ_list]
+        if not isinstance(self.requested_organ_list, list):
+            self.requested_organ_list = [self.requested_organ_list]
         else:
-            self.requested_organ_list = requested_organ_list
+            self.requested_organ_list = self.requested_organ_list
         # print("init Requested organs", self.requested_organ_list)
         self.split = split
         self.patient = patient_id
@@ -290,7 +298,8 @@ class AAPMSinglePatient(Dataset):
         "to set the task label and disc label for this dataset"
         # all_organs have the organs in the order i wanna train them, tt should not relate to
         # the true label of the organ cuz the training order might change
-        self.tt = all_organs().index(self.requested_organ_list[0])
+        # print("the problem, " , str(self.requested_organ_list[0]) + '_aapm')
+        self.tt = cross_domain_organs().index(str(self.requested_organ_list[0]) + '_aapm')
         self.td = self.tt + 1
 
     def prepare_files(self):
@@ -307,6 +316,7 @@ class AAPMSinglePatient(Dataset):
 
         # Return one organ or a list of organs as requested
         if len(self.requested_organ_list) == 1:  # return only one organ
+            # print(self.requested_organ_list)
             organ_idx = self.organ_label_mapping(self.requested_organ_list[0])  # a list of 1 item
             # for 1st organ for ex tt = 0, td = 1
             patient_gt[patient_gt != organ_idx] = 0

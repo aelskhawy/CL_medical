@@ -11,8 +11,12 @@ import shutil
 # left lung 1, right lung 2, heart 3, oesophagus 4?, trachea 5, spinal_cord 6
 
 def data_root_structSeg():
-    # return Path("/home/skhawy/thesis/structseg")
-    return Path("/data/structseg_preprocessed")  #polyaxon
+    return Path("/home/skhawy/thesis/structseg")
+    # return Path("/data/structseg_preprocessed")  #polyaxon
+
+def cross_domain_organs() -> List[str]:
+    # return ['heart_aapm', 'heart_sseg']
+    return ['l_lung_aapm', 'l_lung_sseg']
 
 def all_organs() -> List[str]:
     # return ["l_lung", "r_lung", "heart", "oesophagus", "trachea", "spinal_cord"]
@@ -131,11 +135,13 @@ class StructSegSinglePatient(Dataset):
                  dataset_file_path: Path = None, transform=None, opt=None):
 
         self.args = opt
+        self.requested_organ_list = requested_organ_list[0].replace("_sseg", "")
+        print("requested organ from structseg is ", self.requested_organ_list)
         # Just making sure its a list
-        if not isinstance(requested_organ_list, list):
-            self.requested_organ_list = [requested_organ_list]
+        if not isinstance(self.requested_organ_list, list):
+            self.requested_organ_list = [self.requested_organ_list]
         else:
-            self.requested_organ_list = requested_organ_list
+            self.requested_organ_list = self.requested_organ_list
         # print("init Requested organs", self.requested_organ_list)
         self.split = split
         self.patient = patient_id
@@ -156,7 +162,7 @@ class StructSegSinglePatient(Dataset):
         "to set the task label and disc label for this dataset"
         # all_organs have the organs in the order i wanna train them, tt should not relate to
         # the true label of the organ cuz the training order might change
-        self.tt = all_organs().index(self.requested_organ_list[0])
+        self.tt = cross_domain_organs().index(str(self.requested_organ_list[0]) + '_sseg')
         self.td = self.tt + 1
 
     def prepare_files(self):

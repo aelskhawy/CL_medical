@@ -6,10 +6,10 @@
 
 ################ Frequently changed options ######################
 #name: "half_sized_model_same_score"
-name:  "structseg_new_order" #   "aapm_sp_rl_ll_heart_eso" #"all_6_ltrc_options" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #""
+name:  "llung_aapm_sseg" #   "aapm_sp_rl_ll_heart_eso" #"all_6_ltrc_options" #"aapm_eso_h_ll_rl_sp" #"" #"aapm_eso_h_ll_rl_sp"  #""
 message: ""
 nepochs: 50
-dataset:  structseg #AAPM # structseg # , LTRC, structseg
+dataset:  AAPM_sseg #AAPM # structseg # , LTRC, structseg
 #continue_train: True  # to continue training an existing model
 #debug_mode: True
 which_network: aspp # old | normal | aspp
@@ -22,8 +22,8 @@ ntasks: 6
 ##### evaluation options
 
 #
-#evaluate_only: True
-#eval_split: test # #test
+evaluate_only: True
+eval_split: test # #test
 #calc_surfd: True
 #vis_seg: True
 #tsne: "yes"
@@ -37,7 +37,7 @@ d_wd: 0.01
 orth: 0.6 #0.3 #0.1     #diff loss regularizer  0.3 aapm 0.6 ltrc
 
 diff: "yes"
-batch_size: 16 # 16
+batch_size: 16
 
 e_wd: 0 #1e-3  #0.001 #0.01  TODO: 0 for AAPM works fine, 1e-3 for LTRC
 e_lr: 0.01  #0.01 #3.3e-4 #0.001 # 0.001  TODO: 0.001 for AAPM, 0.0001 for LTRC

@@ -68,7 +68,10 @@ def run(args, run_id):
     elif args.dataset == 'structseg':
         tasks = all_data.structseg_data_queries(options=args)
     else:
-        tasks = all_data.ltrc_nlst_data_queries()
+        tasks = all_data.cross_domains_queries()
+    #
+    # else:
+    #     tasks = all_data.ltrc_nlst_data_queries()
 
     # Model
     # Net contains both shared, private modules and the task specific heads
